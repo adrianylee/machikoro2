@@ -113,31 +113,35 @@ function bouncePath(width: number, height: number, random: () => number) {
   });
 }
 
+interface ReceivedRoll { game: GameView; receivedAt: number }
+
+function rollAge({ game, receivedAt }: ReceivedRoll) {
+  return Math.max(0, (game.serverNow ?? receivedAt) - game.dicePresentation!.startedAt) + Math.max(0, Date.now() - receivedAt);
+}
+
 export function DiceBoard({ game }: { game: GameView }) {
-  const [rolls, setRolls] = useState<GameView[]>(() => game.dicePresentation ? [game] : []);
+  const [rolls, setRolls] = useState<ReceivedRoll[]>(() => game.dicePresentation ? [{ game, receivedAt: Date.now() }] : []);
   const at = game.dicePresentation?.startedAt;
   useEffect(() => {
     setRolls(previous => {
       if (!game.dicePresentation) return previous.length ? [] : previous;
-      const live = previous.filter(roll => {
-        const presentation = roll.dicePresentation!;
-        return Date.now() < presentation.startedAt + presentation.duration + DICE_REST_MS + 600;
-      });
-      return live.some(roll => roll.rollVersion === game.rollVersion) ? live : [...live, game];
+      const live = previous.filter(roll => rollAge(roll) < roll.game.dicePresentation!.duration + DICE_REST_MS + 600);
+      return live.some(roll => roll.game.rollVersion === game.rollVersion) ? live : [...live, { game, receivedAt: Date.now() }];
     });
   }, [game.rollVersion, at]);
-  return rolls.map(roll => <RolledDice key={roll.rollVersion} game={roll} />);
+  return rolls.map(roll => <RolledDice key={roll.game.rollVersion} roll={roll} />);
 }
 
-function RolledDice({ game }: { game: GameView }) {
+function RolledDice({ roll }: { roll: ReceivedRoll }) {
+  const { game } = roll;
   const board = useRef<HTMLDivElement>(null);
   const presentation = game.dicePresentation;
-  const [visible, setVisible] = useState(() => !!presentation && Date.now() < presentation.startedAt + presentation.duration + DICE_REST_MS + 600);
+  const [visible, setVisible] = useState(() => !!presentation && rollAge(roll) < presentation.duration + DICE_REST_MS + 600);
   const [settled, setSettled] = useState(false);
   useEffect(() => {
     const element = board.current;
     if (!element || !presentation) return;
-    const age = Math.max(0, Date.now() - presentation.startedAt);
+    const age = rollAge(roll);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const remaining = Math.max(0, presentation.duration - age);
     const settle = setTimeout(() => setSettled(true), reduce ? 0 : remaining);
@@ -146,7 +150,7 @@ function RolledDice({ game }: { game: GameView }) {
     function place() {
       if (!element) return;
       animations.forEach(animation => animation.cancel());
-      const elapsed = Math.max(0, Date.now() - presentation!.startedAt);
+      const elapsed = rollAge(roll);
       const { width, height } = element.getBoundingClientRect();
       animations = Array.from(element.querySelectorAll<HTMLElement>('.flying-die')).flatMap((piece, index) => {
         const margin = 32;

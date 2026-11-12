@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import type { GameView } from '../game/view.ts';
 import { Coin, Symbol } from './Cards.tsx';
 import { DiceGlyph } from './Dice.tsx';
@@ -21,13 +20,8 @@ function percent(dice: 1 | 2, roll: number) {
 }
 
 function Odds({ game }: { game?: GameView }) {
-  const end = game?.dicePresentation ? game.dicePresentation.startedAt + game.dicePresentation.duration : 0;
-  const [revealed, setRevealed] = useState(end <= Date.now());
-  useEffect(() => {
-    setRevealed(end <= Date.now());
-    const timeout = setTimeout(() => setRevealed(true), Math.max(0, end - Date.now()));
-    return () => clearTimeout(timeout);
-  }, [end]);
+  // The Worker advances past the roll only after the dice have settled.
+  const revealed = game?.resolutionStage !== 'roll';
   const rolledCount = game?.dice?.length;
   const selected = game?.diceSelection ?? rolledCount;
   const total = revealed ? game?.dice?.reduce((sum, die) => sum + die, 0) : undefined;
