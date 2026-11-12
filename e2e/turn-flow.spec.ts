@@ -32,7 +32,7 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
     if (process.env.MACHIKORO_TEST_URL) {
       const reference = second.getByRole('region', { name: 'Table references' });
       for (const step of ['roll', 'red', 'blue', 'green', 'purple', 'landmarks', 'allowance']) {
-        await expect(reference.locator(`[data-category="${step}"]`)).toHaveAttribute('aria-current', 'step');
+        await expect(reference.locator('[aria-current="step"]')).toHaveAttribute('data-category', step);
       }
     }
     await expect(second.getByRole('heading', { name: 'Build', exact: true })).toBeVisible({ timeout: 23_000 });
