@@ -54,7 +54,7 @@ export function Balance({ amount }: { amount: number }) {
 const iconWords: Record<string, Icon | 'landmark'> = { grain: 'grain', fruit: 'fruit', flower: 'flower', gear: 'gear', shop: 'shop', restaurant: 'cup', major: 'major', combo: 'combo', landmark: 'landmark', 'launch pad': 'landmark' };
 
 export function EffectText({ text }: { text: string }) {
-  const parts = text.split(/(\b\d+(?=\s+(?:fewer\s+)?coins?\b)|\b(?:one|half)(?=\s+(?:extra\s+)?coins?\b)|\b(?:grain|fruit|flower|gear|shop|restaurant|major|combo)(?=\s+establishment)|\blandmarks?\b|\bLaunch Pad\b)/gi);
+  const parts = text.split(/(\b\d+(?=\s+(?:(?:fewer|pity)\s+)?coins?\b)|\b(?:one|half)(?=\s+(?:extra\s+)?coins?\b)|\b(?:grain|fruit|flower|gear|shop|restaurant|major|combo)(?=\s+establishment)|\blandmarks?\b|\bLaunch Pad\b)/gi);
   return <>{parts.map((part, i) => {
     const name = iconWords[part.toLowerCase().replace(/^landmarks$/, 'landmark')];
     if (i % 2 && name) return <span className="effect-term" key={i}><Symbol name={name} /> {part}</span>;
@@ -66,6 +66,7 @@ export function EffectText({ text }: { text: string }) {
 }
 
 function compactEffect(card: TableCard) {
+  if (card.id === 'table-bank') return 'Gives 1 pity coin to impoverished players.';
   const { effect } = CARDS[card.id];
   switch (effect.kind) {
     case 'bank': return `Earn ${effect.coins} coins${effect.per ? ` per ${effect.per === 'cup' ? 'restaurant' : effect.per} establishment` : ''}.`;
@@ -89,15 +90,18 @@ function compactEffect(card: TableCard) {
 
 export function CardSummary({ card, compact = true }: { card: TableCard; compact?: boolean }) {
   const split = card.name.lastIndexOf(' ') + 1;
-  return <><strong className="card-title">{card.name.slice(0, split)}<span className="effect-term">{card.name.slice(split)} <Symbol name={card.icon ?? 'landmark'} /></span></strong>
+  return <><strong className="card-title">{card.name.slice(0, split)}<span className="effect-term">{card.name.slice(split)} <Symbol name={card.id === 'table-bank' ? 'bag' : card.icon ?? 'landmark'} /></span></strong>
     {compact && <span className="card-effect"><EffectText text={compactEffect(card)} /></span>}</>;
 }
 
-export function CardInformation({ card }: { card: TableCard }) {
+export function CardInformation({ card, earnings, earningsPartial }: { card: TableCard; earnings?: number; earningsPartial?: boolean }) {
   return <><p><EffectText text={card.effect} /></p>
-    <p className="muted">{card.copies} {card.copies === 1 ? 'copy' : 'copies'} in the deck
-      {card.numbers.length > 0 && ` · Activates on ${card.numbers.join(' or ')}`}</p>
-    {card.color === 'landmark' && <p className="muted landmark-prices">{card.prices.join(' / ')} <span className="coin" aria-label="coins">¢</span></p>}</>;
+    <div className="card-extra">
+      <p className="muted">{card.copies} {card.copies === 1 ? 'copy' : 'copies'} in the deck
+        {card.numbers.length > 0 && ` · Activates on ${card.numbers.join(' or ')}`}</p>
+      {card.color === 'landmark' && <p className="muted landmark-prices">{card.prices.join(' / ')} <span className="coin" aria-label="coins">¢</span></p>}
+      {earnings !== undefined && <p>Coins this game: {earningsPartial ? '≥ ' : ''}{earnings} <span className="coin" aria-hidden="true">¢</span></p>}
+    </div></>;
 }
 
 const cityFilters = [['low', 'One die'], ['high', 'Two dice'], ['cup', 'Restaurants'], ['grain', 'Wheat'],
@@ -131,13 +135,15 @@ function CardMeta({ card, count, cost }: { card: TableCard; count: number; cost?
   </span>;
 }
 
-export function CardTile({ card, count, cost, blocked, unaffordable, mini, inline, ownerName, buy }: {
+export function CardTile({ card, count, cost, blocked, unaffordable, mini, inline, ownerName, buy, earnings, earningsPartial, activationAt, serverNow }: {
   card: TableCard; count: number; cost?: number; blocked?: string;
-  unaffordable?: boolean; mini?: boolean; inline?: boolean; ownerName?: string; buy?: () => boolean;
+  unaffordable?: boolean; mini?: boolean; inline?: boolean; ownerName?: string; buy?: () => boolean; earnings?: number; earningsPartial?: boolean; activationAt?: number; serverNow?: number;
 }) {
   const [preview, setPreview] = useState<{ left: number; top: number; width: number; closing?: boolean }>();
   const anchor = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
+  const isBank = card.id === 'table-bank';
+  const passivePreview = mini || !!ownerName || isBank;
   const keyboardPreview = useRef(false);
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const description = `${card.name}${count > 1 ? `, ${count} copies` : ''}${unaffordable ? ', unaffordable' : ''}`;
@@ -159,6 +165,17 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
     timeout.current = setTimeout(() => setPreview(current => current ? { ...current, closing: true } : current), delay);
   }
   useEffect(() => () => clearTimeout(timeout.current), []);
+  useEffect(() => {
+    if (!inline || activationAt === undefined || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const age = Math.max(0, (serverNow ?? Date.now()) - activationAt);
+    if (age >= 520) return;
+    const shake = anchor.current?.animate([
+      { transform: 'translateX(0)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' },
+      { transform: 'translateX(-2px)' }, { transform: 'translateX(2px)' }, { transform: 'translateX(0)' },
+    ], { duration: 520, easing: 'ease-out' });
+    if (shake) shake.currentTime = age;
+    return () => shake?.cancel();
+  }, [activationAt, inline]);
   useLayoutEffect(() => {
     if (!preview || preview.closing || !popup.current) return;
     const height = popup.current.offsetHeight;
@@ -191,14 +208,14 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
     };
   }, [preview]);
   return <>
-    <div ref={anchor} tabIndex={inline ? undefined : 0} role="group" className={mini || ownerName ? 'mini-card' : 'table-card'}
+    <div ref={anchor} tabIndex={inline ? undefined : 0} role="group" className={mini || ownerName ? 'mini-card' : isBank ? 'table-card bank-card' : 'table-card'}
       data-color={card.color} data-stacked={count > 1 || undefined} data-card={card.id}
       data-unaffordable={unaffordable || undefined} aria-label={description}
       onPointerEnter={event => { if (!inline && event.pointerType !== 'touch') show(); }}
       onPointerLeave={event => {
         if (inline || event.pointerType === 'touch' || keyboardPreview.current) return;
         if (event.relatedTarget instanceof Node && popup.current?.contains(event.relatedTarget)) return;
-        hide(mini ? 100 : 0);
+        hide();
       }} onFocus={() => { if (!inline) { keyboardPreview.current = true; show(); } }}
       onBlur={event => {
         keyboardPreview.current = false;
@@ -218,15 +235,16 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
       {ownerName ? <><BuildingArt source={card.art} /><span aria-hidden="true">∞</span></> : mini ? <>{card.numbers.length > 0 && <span>{card.numbers.join('–')}</span>}<Symbol name={card.icon ?? 'landmark'} />
         {count > 1 && <small>×{count}</small>}</> : <>
         <span className="card-picture">
-          <CardMeta card={card} count={count} cost={cost ?? card.prices[0]} />
+          {isBank ? <span className="coin bank-infinity" aria-label="Unlimited coins">∞</span> : <CardMeta card={card} count={count} cost={cost ?? card.prices[0]} />}
           <BuildingArt source={card.art} />
         </span>
         <CardSummary card={card} compact={!inline} />
-        {inline && <div className="card-inline-info"><CardInformation card={card} /></div>}
+        {inline && <div className="card-inline-info"><CardInformation card={card} earnings={earnings} earningsPartial={earningsPartial} /></div>}
       </>}
     </div>
     {preview && createPortal(<div ref={popup} className={`panel card-preview ${mini ? 'card-preview-mini' : 'card-preview-expanded'}`}
       style={{ left: preview.left, top: preview.top, width: preview.width }} data-color={card.color} data-closing={preview.closing || undefined}
+      data-passive={passivePreview || undefined} data-bank={isBank || undefined}
       role="region" aria-label={`${card.name} details`} aria-hidden={preview.closing || undefined}
       onPointerEnter={() => clearTimeout(timeout.current)}
       onPointerLeave={event => {
@@ -240,10 +258,11 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
       }}
       onAnimationEnd={() => { if (preview.closing) setPreview(undefined); }}>
       {mini ? <CardSummary card={card} /> : <>
-        <CardMeta card={card} count={count} cost={ownerName ? undefined : cost ?? card.prices[0]} />
-        <BuildingArt source={card.art} /><strong>{card.name} <Symbol name={card.icon ?? 'landmark'} /></strong>
+        {isBank ? <span className="coin bank-infinity" aria-label="Unlimited coins">∞</span>
+          : <CardMeta card={card} count={count} cost={ownerName ? undefined : cost ?? card.prices[0]} />}
+        <BuildingArt source={card.art} /><CardSummary card={card} compact={isBank} />
         {ownerName && <p className="modifier-owner">Owned by {ownerName}</p>}
-        <CardInformation card={card} />
+        {isBank ? <p><EffectText text={card.effect} /></p> : <CardInformation card={card} />}
         {blocked && <p className="muted">{blocked}</p>}
         {buy && cost !== undefined && <button type="button" className="primary card-buy" disabled={!!blocked || preview.closing}
           onBlur={event => {

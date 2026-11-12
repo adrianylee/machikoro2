@@ -25,7 +25,10 @@ export function tablePhase(game: GameView) {
     case 'resolve': return game.resolutionStage ? 'Resolve the roll' : 'Build';
     case 'build': return 'Build';
     case 'choice': return 'Resolve effect';
-    case 'finished': return 'Game complete';
+    case 'finished': {
+      const winner = game.cities.find(city => city.id === game.winner);
+      return `Game complete · ${winner ? winner.name + ' wins!' : 'Game drawn'}`;
+    }
   }
 }
 
@@ -116,7 +119,12 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
         <CityFilters current={filter} select={value => { if (cityRow.current) cityRow.current.scrollLeft = 0; setSelection({ cityId, filter: value }); }} />
       </div>
       <div className="card-row" ref={cityRow}>
-        {visibleCity?.map(stack => <CardTile inline key={stack.id} card={TABLE_CARDS[stack.id]} count={stack.count} />)}
+        {visibleCity?.map(stack => {
+          const card = TABLE_CARDS[stack.id];
+          const at = card.color === 'landmark' ? game.landmarkTriggers?.[stack.id] : game.propertyActivations?.[city.id]?.[stack.id];
+          return <CardTile inline key={`${city.id}:${stack.id}`} card={card} count={stack.count} earnings={city.propertyCoins?.[stack.id] ?? 0}
+            earningsPartial={game.propertyCoinsPartial} activationAt={at} serverNow={game.serverNow} />;
+        })}
         {!visibleCity?.length && <p className="muted">{filter ? 'No buildings match this filter.' : 'No buildings yet.'}</p>}
       </div>
     </section>}

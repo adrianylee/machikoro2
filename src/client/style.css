@@ -236,7 +236,7 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--out
 /* Players, references, and table activity */
 .roster li { border-color: var(--player-color, var(--outline)); flex-wrap: wrap; gap: 5px 7px; }
 .roster li[data-active] { background: color-mix(in srgb, var(--player-color) 30%, var(--surface)); outline: 2px solid var(--player-color); outline-offset: -2px; }
-.roster .seat-number { display: grid; place-items: center; width: 23px; height: 23px; color: white; background: var(--player-color); border-radius: 50%; font-weight: 800; }
+.roster .seat-number { display: grid; place-items: center; width: 23px; height: 23px; color: #10131a; background: var(--player-color); border-radius: 50%; font-weight: 800; }
 .reference { padding: 8px 12px; }
 .reference details + details { border-top: 1px solid var(--outline); }
 .reference summary { cursor: pointer; padding: 7px 0; font-weight: 800; }
@@ -292,10 +292,12 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--out
 .roll-total { font-weight: 800; }
 .results { padding: 17px; }
 .results ol { margin: 12px 0; padding: 0; list-style: none; display: grid; gap: 5px; }
-.results li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 7px; border-radius: 6px; background: var(--bg); }
+.results li { border: 2px solid var(--player-color, var(--outline)); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 7px; border-radius: 6px; background: var(--bg); }
 .results li[data-winner] { background: var(--banner); }
 .rank-name { position: relative; flex: 1; display: flex; align-items: center; gap: 4px; font-weight: 700; }
-[data-winner] .rank-name { font-size: 1.22rem; }
+.results li[data-winner] { padding: 14px; gap: 12px; font-size: clamp(1.35rem, 3vw, 2rem); }
+.results li[data-winner] .congratulate { margin-inline-start: auto; font-size: .65em; min-height: 3em; padding-inline: .85em; }
+.results li[data-winner] .rank-number { color: var(--brown); }
 .rank-number { color: var(--muted); font-variant-numeric: tabular-nums; }
 .confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 13; }
 .confetti-full { position: fixed; }
@@ -477,13 +479,21 @@ img[data-sprite-pending] { visibility: hidden; }
 .market-side { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .market-side .table-bank { margin-top: auto; width: 100%; display: grid; gap: 8px; align-content: start; padding: 12px; }
 .table-bank h2 { font-size: 1.15rem; }
-.bank-card { position: relative; padding: 6px; border: 1px solid var(--outline); border-top: 4px solid #151719; border-radius: 8px; background: var(--card-paper); }
-.bank-card img { display: block; width: 100%; height: auto; aspect-ratio: 1.18; object-fit: contain; }
-.bank-card .card-symbol[data-symbol="bag"] { color: var(--card-text); position: absolute; top: 6px; right: 6px; font-size: 1.35rem; }
+.table-bank .bank-card, .card-preview[data-bank] {
+  --card-paper: #171719; --card-text: #f4eee6;
+  position: relative; border-top-color: #050506;
+}
+:root[data-theme="dark"] :is(.table-bank .bank-card, .card-preview[data-bank]) { border-top-color: #ffd230; }
+.card-preview[data-bank] { position: fixed; }
+.table-bank .bank-card .card-picture img { aspect-ratio: 1.38; padding-top: 8px; }
+.bank-infinity { position: absolute; inset: 7px auto auto 8px; z-index: 1; font-size: 1.08rem; }
+.table-bank .bank-card .card-effect { font-size: .78rem; overflow-wrap: anywhere; }
+.card-preview[data-bank] .card-effect { display: block; }
+.card-preview[data-bank] img { margin-top: 13px; }
 .card-preview { overflow: hidden; }
 .card-preview-expanded img { height: min(155px, 26vh); object-fit: contain; }
 .card-preview .card-buy { font-size: .83rem; padding: 6px; }
-.card-preview[data-closing] { pointer-events: none; }
+.card-preview:is([data-closing], [data-passive]) { pointer-events: none; }
 .card-preview-expanded { transform: translate(-50%, -50%); border-top: 4px solid var(--card-preview-edge, var(--accent)); animation: card-grow .19s ease-out both; }
 .card-preview-expanded[data-color="red"] { --card-preview-edge: var(--red); }
 .card-preview-expanded[data-color="blue"] { --card-preview-edge: var(--blue); }
@@ -501,19 +511,26 @@ img[data-sprite-pending] { visibility: hidden; }
 .honor-tooltip { display: none; position: absolute; z-index: 25; top: calc(100% + 5px); left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: .78rem; font-weight: 700; padding: 6px 9px; color: var(--ink); }
 .honor:is(:hover,:focus-visible) .honor-tooltip { display: block; }
   .rank-player-name { max-width: 17ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.results li[data-winner] .rank-name { flex: 1 0 max-content; min-width: max-content; }
+.results li[data-winner] .rank-name { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
 .congratulate { position: relative; padding: 5px 9px; min-height: 36px; }
 .congratulate:active { transform: scale(.94); }
 .results-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .stats-dialog { width: min(990px, calc(100% - 26px)); max-width: none; color: var(--ink); padding: 15px; }
 .stats-dialog::backdrop { background: #071d30a0; }
+.stats-heading small { font-size: .7em; font-weight: 500; color: var(--muted); }
 .stats-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
 .stats-table { width: 100%; border-collapse: collapse; font-size: .86rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stats-table :is(th,td) { border-bottom: 1px solid var(--outline); }
 
 /* Market sidebar, city filters, and results */
 .leaderboard, .landmark-modifiers { padding: 12px; min-width: 0; }
-.leaderboard { flex: 1; }
+.leaderboard { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+@media (min-width: 1001px) {
+  .market-side { contain: size; min-height: 400px; }
+}
+@media (max-width: 1000px) {
+  .leaderboard { max-height: min(45dvh, 390px); }
+}
 .leaderboard h2, .landmark-modifiers h2 { font-size: 1rem; }
 .leaderboard ol { position: relative; display: grid; gap: 8px; margin: 9px 0 0; padding: 0; list-style: none; }
 .leaderboard li {
@@ -543,6 +560,17 @@ img[data-sprite-pending] { visibility: hidden; }
 .card-inline-info { display: grid; gap: 5px; color: var(--card-text); font-size: .8rem; line-height: 1.32; }
 .card-inline-info p { margin: 0; }
 .card-inline-info .muted { color: inherit; }
+.card-inline-info .card-extra { position: relative; }
+.card-inline-info .card-extra::before { content: ''; position: absolute; inset: -3px 0 auto; border-top: 1px solid var(--outline); }
+.card-inline-info .card-extra p + p { margin-top: 2px; }
+.odds-stats { float: right; display: inline-flex; align-items: center; gap: 9px; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.odds-stats > span { position: relative; }
+.odds-stat-tooltip {
+  visibility: hidden; pointer-events: none; position: absolute; bottom: calc(100% + 5px); right: 0; z-index: 40;
+  white-space: nowrap; font-size: .72rem; font-weight: 600; padding: 4px 7px;
+  background: var(--card-paper); color: var(--card-text);
+}
+.odds-stats > span:hover .odds-stat-tooltip { visibility: visible; }
 .city-filter { justify-content: center; min-width: 29px; min-height: 32px; font-size: 1.04rem; }
 .city-filter[aria-pressed="true"] { background: var(--soft); outline: 2px solid var(--accent); outline-offset: -2px; }
 .stats-dialog { width: min(1240px, calc(100% - 20px)); }
@@ -560,7 +588,7 @@ img[data-sprite-pending] { visibility: hidden; }
   .landmark-modifiers { padding: 7px; min-height: 68px; }
 }
 @media (max-width: 575px) {
-  .market-side { grid-template-columns: minmax(0, 1fr) 100px; gap: 6px; }
+  .market-side { grid-template-columns: minmax(0, 1fr) minmax(104px, 32%); gap: 6px; }
   .landmark-modifiers h2 { font-size: .8rem; }
   .modifier { width: 34px; }
   .leaderboard li { grid-template-columns: minmax(0, 1fr); }
@@ -581,15 +609,15 @@ img[data-sprite-pending] { visibility: hidden; }
 }
 @media (max-width: 575px) {
   .masthead .header-inner:has(.room-invite) { display: grid; grid-template-columns: 1fr auto; }
-  .room-invite { grid-row: 2; grid-column: 1 / -1; padding-bottom: 5px; }
-  .masthead nav { grid-row: 1; grid-column: 2; }
+  .masthead .header-inner:has(.room-invite) nav { grid-row: 2; grid-column: 1 / -1; width: 100%; justify-content: flex-end; padding-bottom: 5px; }
+  .room-invite { margin-inline-end: auto; }
+  .masthead .header-inner:has(.room-invite) .brand { grid-column: 1 / -1; }
   .masthead .copy-room { padding-inline: 9px; }
   .market-side { grid-template-columns: minmax(0, 1fr) 100px; }
   .market-side .table-bank { padding: 7px; }
   .honor-tooltip { white-space: normal; width: max-content; max-width: 160px; }
-  [data-winner] .rank-name { font-size: 1.1rem; }
   .rank-player-name { max-width: 10ch; }
-  .rank-name .honor { font-size: .88rem; }
+  .results li:not([data-winner]) .rank-name .honor { font-size: .88rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .card-preview { animation-duration: .01s !important; }

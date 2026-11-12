@@ -11,7 +11,7 @@ import '@fontsource-variable/dm-sans';
 import '@fontsource/dm-serif-text/400.css';
 import './style.css';
 
-const colors = ['#af492d', '#25725e', '#7a4f9f', '#275f9c', '#94601d'];
+const colors = ['#ff4cab', '#ff781f', '#269dff', '#bd64ff', '#31ce67'];
 
 function roomFrom(value: string) {
   const trimmed = value.trim().toLowerCase();
@@ -163,8 +163,16 @@ function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; au
   const [removeId, setRemoveId] = useState('');
   const { lobby, status, error, send } = useRoom(id, credentials);
   const [viewing, setViewing] = useState<string>();
-  const [nudge, setNudge] = useState<{ target: string; at: number; count: number }>();
-  useGameSound(sound, lobby, audio);
+  const [nudge, setNudge] = useState<{ turn: string; at: number; count: number }>();
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const game = lobby?.game;
+  const turn = game && game.phase !== 'finished' ? `${game.turnSequence ?? game.turnBeganAt}:${game.activePlayerId}` : undefined;
+  const cityId = game?.cities.some(city => city.id === viewing) ? viewing! : lobby?.self ?? '';
+  useGameSound(sound, lobby, audio, cityId);
+  useEffect(() => {
+    setNudge(undefined);
+    return () => clearTimeout(nudgeTimer.current);
+  }, [turn]);
 
   if (!lobby) return <main className="centered">
     <section className="panel entrance">
@@ -192,13 +200,14 @@ function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; au
   const canStart = status === 'online' && connected >= 2;
   const playerOrder = lobby.game?.turnOrder ?? lobby.players.map(seat => seat.id);
   const count = lobby.game ? lobby.players.length : connected;
-  const cityId = lobby.game?.cities.some(city => city.id === viewing) ? viewing! : lobby.self;
   const active = lobby.players.find(seat => seat.id === lobby.game?.activePlayerId);
   const turnStart = lobby.game?.turnBeganAt ?? lobby.game?.turnStartedAt;
-  function sendNudge(target: string) {
-    if (!send({ type: 'nudge' })) return;
+  function sendNudge() {
+    if (!turn || !send({ type: 'nudge' })) return;
     const at = performance.now();
-    setNudge(previous => ({ target, at, count: previous?.target === target && at - previous.at < 2000 ? previous.count + 1 : 1 }));
+    setNudge(previous => ({ turn, at, count: previous?.turn === turn && at - previous.at < 2000 ? previous.count + 1 : 1 }));
+    clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = setTimeout(() => setNudge(undefined), 2000);
   }
 
   return <main className="content-width room-view">
@@ -223,8 +232,8 @@ function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; au
         <section className="panel roster">
           <div className="roster-heading"><h2>Player order</h2>
             {active && lobby.game?.phase !== 'finished' && <button type="button" className="secondary roster-nudge"
-              disabled={active.id === lobby.self || status !== 'online'} onClick={() => sendNudge(active.id)}>
-              Nudge: {active.name}{nudge?.target === active.id && <span className="nudge-counter" aria-hidden="true" key={nudge.at}>×{nudge.count}</span>}
+              disabled={active.id === lobby.self || status !== 'online'} onClick={sendNudge}>
+              Nudge: {active.name}{nudge && nudge.turn === turn && <span className="nudge-counter" aria-hidden="true" key={nudge.at}>×{nudge.count}</span>}
             </button>}
           </div>
           <ul>
@@ -281,15 +290,15 @@ function App() {
     <header className="masthead">
       <div className="content-width header-inner">
         <a className="brand" href="/"><span><Icon name="city" /></span>Machi Koro 2</a>
-        {room && <div className="room-invite"><button className="secondary copy-room" onClick={async () => {
+        <nav aria-label="Game settings">
+        {room && <div className="room-invite"><span className="room-code" title={room.toUpperCase()}>{room.toUpperCase()}</span><button className="secondary copy-room" onClick={async () => {
             try {
               await navigator.clipboard.writeText(new URL(`/room/${room}`, location.origin).href);
               setNotice('Invite link copied.');
             } catch {
               setNotice(`Copy the invite link from your address bar.`);
             }
-          }}>Copy invite link</button><span className="room-code" title={room.toUpperCase()}>{room.toUpperCase()}</span></div>}
-        <nav aria-label="Game settings">
+          }}>Copy invite link</button></div>}
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setDark(value => !value)}><Icon name={dark ? 'sun' : 'moon'} /></button>
           <button className="icon-button" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'}

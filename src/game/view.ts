@@ -1,6 +1,6 @@
 import { CARDS, isPersistentLandmark } from './catalog.ts';
 import type { Card, Icon } from './catalog.ts';
-import { buildOffer } from './match.ts';
+import { buildOffer, establishmentPayouts, propertyEarnings, rollHistory } from './match.ts';
 import type { Choice, GameEvent, Match, PlayerStats, ResolutionStage, ThrowMotion, DicePresentation } from './match.ts';
 import { visibleSupply } from './supply.ts';
 import type { Stack, VisibleSupply } from './supply.ts';
@@ -24,6 +24,7 @@ export interface TableCity {
   coins: number;
   establishments: Stack[];
   landmarks: Stack[];
+  propertyCoins?: Record<string, number>;
 }
 
 export interface GameView {
@@ -39,6 +40,10 @@ export interface GameView {
   throwMotion?: ThrowMotion;
   resolutionStage?: ResolutionStage | 'roll';
   landmarkTriggers?: Record<string, number>;
+  propertyActivations?: Record<string, Record<string, number>>;
+  propertyCoinsPartial?: boolean;
+  oddsPayouts?: number[];
+  turnSequence?: number;
   turnOrder?: string[];
   stats?: Record<string, PlayerStats>;
   drawn?: boolean;
@@ -108,19 +113,28 @@ export function matchView(game: Match, seats: { id: string; name: string }[], vi
   const supply = visibleSupply(game.supply);
   const legalBuilds = Object.fromEntries(Object.values(supply).flatMap(row => row.stacks.map(({ id }) =>
     [id, buildOffer(game, viewer, CARDS[id])] as const)));
+  const earnings = propertyEarnings(game);
+  const lastDice = game.stats?.[active.id]?.lastDice ?? rollHistory(game, active.id).lastDice;
+  const stats = game.phase === 'finished' && game.stats ? Object.fromEntries(Object.entries(game.stats).map(([id, player]) => {
+    if (player.rollCount !== undefined) return [id, player];
+    const history = rollHistory(game, id);
+    return [id, { ...player, rollCount: history.diceUsed === player.diceCount ? history.count : undefined }];
+  })) : undefined;
   return {
     phase: game.phase, activePlayerId: active.id, openingRound: game.openingRound,
     dice: game.roll?.dice ?? null, rollVersion: game.rollVersion, turnStartedAt: game.turnStartedAt, turnBeganAt: game.turnBeganAt, supply, legalBuilds,
     version: game.version, choice: game.choice, winner: game.winner, events: game.events,
-    landmarkTriggers: game.landmarkTriggers,
+    landmarkTriggers: game.landmarkTriggers, propertyActivations: game.propertyActivations, turnSequence: game.turnSequence,
+    propertyCoinsPartial: game.propertyCoinsPartial || (!game.propertyCoins && (game.events[0]?.id ?? 1) > 1) || undefined,
+    oddsPayouts: game.phase === 'roll' ? establishmentPayouts(game, viewer.id) : undefined,
     dieColors: game.dieColors, throwMotion: game.throwMotion, resolutionStage: game.resolvingStep,
-    dicePresentation: game.dicePresentation, diceSelection: game.diceSelection, serverNow: Date.now(),
+    dicePresentation: game.dicePresentation, diceSelection: game.phase === 'roll' ? game.diceSelection ?? lastDice : game.diceSelection, serverNow: Date.now(),
     turnOrder: [...game.players.slice(game.startingSeat), ...game.players.slice(0, game.startingSeat)].map(player => player.id),
-    stats: game.phase === 'finished' ? game.stats : undefined, drawn: game.drawn,
+    stats, drawn: game.drawn,
     cities: game.players.map(player => ({
       id: player.id,
       name: seats.find(seat => seat.id === player.id)?.name ?? 'Player',
-      coins: player.coins,
+      coins: player.coins, propertyCoins: earnings[player.id],
       establishments: Object.entries(player.establishments)
         .sort(([a], [b]) => TABLE_CARDS[a].numbers[0] - TABLE_CARDS[b].numbers[0])
         .map(([id, count]) => ({ id, count })),

@@ -73,12 +73,12 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
 
     await second.getByRole('button', { name: 'Vote to draw game' }).click();
     await starting.getByRole('button', { name: 'Yes', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Game drawn' })).toBeVisible();
-    await expect(guest.getByRole('heading', { name: 'Game drawn' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Game complete · Game drawn' })).toBeVisible();
+    await expect(guest.getByRole('heading', { name: 'Game complete · Game drawn' })).toBeVisible();
     await page.screenshot({ path: info.outputPath('draw-rankings.png') });
     await guest.getByRole('button', { name: 'Play again' }).click();
     await expect(guest.getByRole('button', { name: 'Waiting...' })).toBeDisabled();
-    await expect(page.getByRole('heading', { name: 'Game drawn' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Game complete · Game drawn' })).toBeVisible();
     await page.getByRole('button', { name: 'Play again' }).click();
     await expect(guest.getByRole('heading', { name: 'Lobby' })).toBeVisible();
   } finally {

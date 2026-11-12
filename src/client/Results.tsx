@@ -32,7 +32,7 @@ const honors: Honor[] = [
   { icon: 'poke', title: 'Most annoying', column: 'Nudges', score: stats => stats?.nudges ?? 0, format: n => `${n} nudges` },
   { icon: 'clock', title: 'Slowest thinker', column: 'Thinking time', score: stats => stats?.thinking ?? 0, format: n => `${time(n)} spent thinking` },
   { icon: 'robber', title: 'Biggest scammer', column: 'Coins stolen', score: stats => stats?.stolen ?? 0, format: n => `${n} coins stolen` },
-  { icon: 'clover', title: 'Serendipitous', column: 'Average roll', score: stats => stats?.diceCount ? stats.diceTotal / stats.diceCount : 0, format: n => `${n.toFixed(1)} average roll value` },
+  { icon: 'clover', title: 'Serendipitous', column: 'Average roll', score: stats => stats?.rollCount ? stats.diceTotal / stats.rollCount : 0, format: n => `${n.toFixed(1)} average roll value` },
   { icon: 'bag', title: 'Trillionaire', column: 'Coins earned', score: stats => stats?.earned ?? 0, format: n => `${n} coins earned` },
   { icon: 'buildings', title: 'Architect', column: 'Total buildings', score: (stats, city) => stats?.built ??
     city.landmarks.length + city.establishments.reduce((sum, stack) => sum + stack.count, 0), format: n => `${n} buildings constructed` },
@@ -114,7 +114,7 @@ export function Results({ game, self, online, rematch, congratulate, controls, c
       key: honor.icon, label: honor.column, value: (city: TableCity) => honor.icon === 'buildings'
         ? city.landmarks.length + city.establishments.reduce((total, stack) => total + stack.count, 0)
         : honor.score(game.stats?.[city.id], city),
-      format: honor.icon === 'clock' ? time : honor.icon === 'clover' ? (value: number) => value.toFixed(1) : String,
+      format: honor.icon === 'clock' ? time : honor.icon === 'clover' ? (value: number) => value ? value.toFixed(1) : '—' : String,
     })),
   ];
   const sortedColumn = columns.find(column => column.key === sort?.key);
@@ -123,22 +123,22 @@ export function Results({ game, self, online, rematch, congratulate, controls, c
   let rank = 0;
   return <section ref={panel} className="panel results" aria-label="Game result">
     {winner?.id === self && <Confetti full />}
-    <h2>{winner ? <><Symbol name="trophy" /> {winner.name} wins!</> : 'Game drawn'}</h2>
+    <h2>Final leaderboard</h2>
     <ol>{cities.map((city, index) => {
       if (!index || compare(cities[index - 1], city)) rank = index + 1;
-      return <li key={city.id} data-winner={city.id === winner?.id || undefined}>
-        <span className="rank-number">{rank}.</span>
+      return <li key={city.id} data-winner={city.id === winner?.id || undefined}
+        style={{ '--player-color': colors[city.id] } as CSSProperties}>
+        <span className="rank-number">{city.id === winner?.id ? <Symbol name="trophy" /> : `${rank}.`}</span>
         <span className="rank-name"><span className="rank-player-name" title={city.name}>{city.name}</span>
           {awards.filter(award => award.best > 0 && award.values[index] === award.best).map(award =>
             <span key={award.icon} className="honor" tabIndex={0} aria-label={`${award.title}: ${award.format(award.values[index])}`}>
               <Symbol name={award.icon} />
               <span className="panel honor-tooltip" role="tooltip">{award.title}: {award.format(award.values[index])}</span>
             </span>)}
-          {city.id === winner?.id && <><Symbol name="trophy" /><Confetti /></>}
+          {city.id === winner?.id && <Confetti />}
         </span>
         {city.id === winner?.id ? <Congratulations controls={controls} serverNow={game.serverNow} disabled={!online} send={congratulate} />
-          : <span>{city.landmarks.length} <Symbol name="landmark" /></span>}
-        <Balance amount={city.coins} />
+          : <><span>{city.landmarks.length} <Symbol name="landmark" /></span><Balance amount={city.coins} /></>}
       </li>;
     })}</ol>
     <div className="results-actions">
@@ -146,7 +146,7 @@ export function Results({ game, self, online, rematch, congratulate, controls, c
       <button className="secondary" onClick={() => details.current?.showModal()}>Show detailed statistics</button>
     </div>
     <dialog className="panel stats-dialog" ref={details} aria-label="Detailed statistics">
-      <div className="stats-heading"><h2>Detailed statistics</h2>
+      <div className="stats-heading"><h2>Detailed statistics <small>(click a column to sort it)</small></h2>
         <form method="dialog"><button className="icon-button" aria-label="Close statistics">×</button></form>
       </div>
       <div className="stats-scroll"><table className="stats-table">
