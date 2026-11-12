@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useGameSound } from './sound.ts';
+import { useAudio, useButtonFeedback, useGameSound } from './sound.ts';
 import { createRoom, newCredential, recentRoom, roomPath, savedSeat, useRoom, validRoom } from './room.ts';
 import type { Lobby, RoomAction } from './room.ts';
 import { GameTable, tablePhase, TurnClock } from './GameTable.tsx';
@@ -154,7 +154,7 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (action: RoomAction) =>
   </section>;
 }
 
-function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: string }) {
+function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; audio: ReturnType<typeof useAudio>; notice: string }) {
   const [credentials, setCredentials] = useState(() => {
     const token = savedSeat(id);
     return token ? { token } as { token: string; name?: string; password?: string } : null;
@@ -164,7 +164,7 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
   const { lobby, status, error, send } = useRoom(id, credentials);
   const [viewing, setViewing] = useState<string>();
   const [nudge, setNudge] = useState<{ target: string; at: number; count: number }>();
-  useGameSound(sound, lobby);
+  useGameSound(sound, lobby, audio);
 
   if (!lobby) return <main className="centered">
     <section className="panel entrance">
@@ -266,6 +266,8 @@ function App() {
     return preferred ? preferred === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   });
   const [sound, setSound] = useState(() => localStorage.getItem('machi-sound') !== 'off');
+  const audio = useAudio(sound);
+  useButtonFeedback(sound, audio);
   const rules = useRef<HTMLDialogElement>(null);
   const [notice, setNotice] = useState('');
   const room = roomPath.exec(location.pathname)?.[1]?.toLowerCase();
@@ -291,13 +293,13 @@ function App() {
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setDark(value => !value)}><Icon name={dark ? 'sun' : 'moon'} /></button>
           <button className="icon-button" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'}
-            onClick={() => setSound(value => !value)}><Icon name={sound ? 'sound' : 'muted'} /></button>
+            data-sound-toggle={sound ? 'off' : 'on'} onClick={() => setSound(value => !value)}><Icon name={sound ? 'sound' : 'muted'} /></button>
           <button className="icon-button" aria-label="How to play" onClick={() => rules.current?.showModal()}><Icon name="help" /></button>
           {room && <a className="icon-button" href="/" aria-label="Leave room"><Icon name="exit" /></a>}
         </nav>
       </div>
     </header>
-    {room ? <RoomView id={room} sound={sound} notice={notice} /> : <Home />}
+    {room ? <RoomView id={room} sound={sound} audio={audio} notice={notice} /> : <Home />}
     <dialog ref={rules} className="panel rules">
       <h2>How to play</h2>
       <p>Start with five coins and three rounds to buy establishments. You can build one establishment or pass each round.</p>
