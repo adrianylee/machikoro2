@@ -97,7 +97,7 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
   useEffect(() => {
     const marker = lastMessage.current;
     if (marker?.parentElement) marker.parentElement.scrollTop = marker.parentElement.scrollHeight;
-  }, [lobby.chat.length, lobby.chat.at(-1)?.id, tab]);
+  }, [lobby.chat.length, lobby.chat.at(-1)?.id, lobby.game?.events?.at(-1)?.id, tab]);
 
   return <section className="panel activity" aria-label="Table activity">
     <div className="activity-tabs" aria-label="Activity view">
@@ -123,9 +123,15 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
         <input aria-label="Chat message" placeholder="Say something…" name="text" maxLength={400} required />
         <button className="primary">Send</button>
       </form>
-    </> : <p className="activity-empty muted">{tab === 'Game Log'
-      ? 'Game events appear here after the game starts.'
-      : 'Invite friends to fill the remaining seats.'}</p>}
+    </> : tab === 'Game Log' ? <div className="chat-feed" role="log" aria-label="Game events">
+      {lobby.game?.events?.length ? lobby.game.events.map(event => {
+        const index = lobby.players.findIndex(seat => seat.id === event.playerId);
+        return <article className="message" key={event.id} style={{ borderColor: colors[index] }}>
+          <p><strong>{lobby.players[index]?.name ?? 'Player'}</strong> {event.text}</p>
+        </article>;
+      }) : <p className="muted">Game events appear here after the game starts.</p>}
+      <div ref={lastMessage} />
+    </div> : <p className="activity-empty muted">{lobby.game ? 'Share the room link to help a player return.' : 'Invite friends to fill the remaining seats.'}</p>}
   </section>;
 }
 
@@ -162,6 +168,10 @@ function RoomView({ id }: { id: string }) {
     </section>
   </main>;
 
+  const host = lobby.hostId === lobby.self;
+  const self = lobby.players.find(player => player.id === lobby.self);
+  const canStart = status === 'online' && lobby.players.length >= 2 && lobby.players.slice(1).every(seat => seat.ready);
+
   return <main className="content-width room-view">
     <div className="phase-banner">
       <div><p className="eyebrow">Room {id.slice(0, 6).toUpperCase()} · {lobby.players.length}/5 seats</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
@@ -170,17 +180,24 @@ function RoomView({ id }: { id: string }) {
     <p className="status-line" aria-live="polite">{notice || (status === 'online' ? 'Connected' : 'Reconnecting…')}</p>
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="table-grid">
-      {lobby.game ? <GameTable game={lobby.game} self={lobby.self} online={status === 'online'} send={send} /> : <section className="panel room-stage">
+      {lobby.game ? <GameTable game={lobby.game} self={lobby.self} online={status === 'online'}
+        send={action => send({ ...action, version: lobby.game!.version })} /> : <section className="panel room-stage">
         <img src="/art/radio-tower.webp" alt="" />
-        <div><h2>Gather your players</h2><p>Share the private link with friends. The table seats up to five players.</p></div>
+        <div><h2>Gather your players</h2><p>Share the invite link with friends. Guests mark ready before the host starts.</p>
+          {host ? <button className="primary lobby-action" disabled={!canStart} onClick={() => send({ type: 'start' })}>Start game</button>
+            : <button className="primary lobby-action" disabled={status !== 'online'}
+              onClick={() => send({ type: 'ready', ready: !self?.ready })}>{self?.ready ? 'Unready' : 'Ready'}</button>}
+        </div>
       </section>}
       <aside className="table-sidebar">
         <section className="panel roster">
           <h2>Players</h2>
+          {host && lobby.game?.phase === 'finished' && <button className="primary lobby-action"
+            disabled={status !== 'online'} onClick={() => send({ type: 'rematch', version: lobby.game!.version })}>Play again</button>}
           <ul>
             {lobby.players.map((seat, index) => <li key={seat.id} style={{ borderColor: colors[index] }}>
               <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
-              <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}</span>
+              <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}{!lobby.game && seat.ready ? ' · Ready' : ''}</span>
             </li>)}
           </ul>
         </section>

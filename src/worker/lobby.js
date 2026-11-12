@@ -29,7 +29,7 @@ export function addChat(room, playerId, text, timestamp) {
 export function publicLobby(room, online) {
   return {
     hostId: room.players[0].id,
-    players: room.players.map(({ id, name }) => ({ id, name, online: online.has(id) })),
+    players: room.players.map(({ id, name, ready }) => ({ id, name, ready: ready ?? false, online: online.has(id) })),
     chat: room.chat,
   };
 }

@@ -10,7 +10,7 @@ test('joining reserves one seat and reconnecting restores that identity', () => 
   const { player } = joinRoom(room, 'private-hash', ' Ada ');
   assert.deepEqual(joinRoom(room, 'private-hash'), { player, joined: false });
   const view = publicLobby(room, new Set([player.id]));
-  assert.deepEqual(view.players, [{ id: player.id, name: 'Ada', online: true }]);
+  assert.deepEqual(view.players, [{ id: player.id, name: 'Ada', ready: false, online: true }]);
   assert.equal(view.hostId, player.id);
   assert.equal(JSON.stringify(view).includes('private-hash'), false);
 });

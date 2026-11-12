@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GameView, TableAction } from './GameTable.tsx';
+import type { GameView } from '../game/view.ts';
+import type { MatchAction } from '../game/match.ts';
+
+type RoomAction = (MatchAction & { version: number }) | { type: 'chat'; text: string }
+  | { type: 'ready'; ready: boolean } | { type: 'start' } | { type: 'rematch'; version: number };
 
 export interface Seat {
   id: string;
   name: string;
   online: boolean;
+  ready: boolean;
 }
 
 export interface ChatMessage {
@@ -120,7 +125,7 @@ export function useRoom(roomId: string, credentials: { token: string; name?: str
     };
   }, [roomId, credentials]);
 
-  function send(action: TableAction | { type: 'chat'; text: string }) {
+  function send(action: RoomAction) {
     const socket = connection.current;
     if (status !== 'online' || socket?.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify(action));

@@ -1,4 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
+import { gameCommand } from './game-commands.ts';
+import { RuleError } from '../game/match.ts';
+import { matchView } from '../game/view.ts';
 import { addChat, joinRoom, publicLobby } from './lobby.js';
 import {
   displayName, InputError, json, parseMessage, requestMessage, ROOM_ID, tokenHash,
@@ -82,12 +85,15 @@ export class Room extends DurableObject {
       }
 
       const room = storage.get('room');
-      if (data.type !== 'chat') throw new InputError('Unknown room command.');
-      addChat(room, playerId, data.text, Date.now());
+      if (data.type === 'chat') {
+        addChat(room, playerId, data.text, Date.now());
+      } else if (!gameCommand(room, playerId, data)) {
+        return;
+      }
       storage.put('room', room);
       this.broadcast(room);
     } catch (error) {
-      if (!(error instanceof InputError)) throw error;
+      if (!(error instanceof InputError) && !(error instanceof RuleError)) throw error;
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'error', message: error.message }));
       }
@@ -108,8 +114,9 @@ export class Room extends DurableObject {
         : [];
     });
     const lobby = publicLobby(room, new Set(connections.map(({ id }) => id)));
+    const game = room.game ? matchView(room.game, room.players) : undefined;
     for (const { socket, id } of connections) {
-      socket.send(JSON.stringify({ type: 'room', self: id, ...lobby }));
+      socket.send(JSON.stringify({ type: 'room', self: id, ...lobby, game }));
     }
   }
 }

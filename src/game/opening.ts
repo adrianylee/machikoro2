@@ -1,6 +1,25 @@
-import { makeSupply, takeFromSupply } from './supply.js';
+import { makeSupply, takeFromSupply } from './supply.ts';
 
-export function startGame(playerIds, cards, random = Math.random) {
+import type { Supply } from './supply.ts';
+import type { Catalog } from './catalog.ts';
+
+export interface Player {
+  id: string;
+  coins: number;
+  establishments: Record<string, number>;
+  landmarks: string[];
+}
+
+export interface OpeningState {
+  phase: 'opening' | 'roll' | 'build' | 'choice' | 'finished';
+  openingRound: number;
+  startingSeat: number;
+  activeSeat: number;
+  supply: Supply;
+  players: Player[];
+}
+
+export function startGame(playerIds: readonly string[], cards: Catalog, random = Math.random): OpeningState {
   if (playerIds.length < 2 || playerIds.length > 5 || new Set(playerIds).size !== playerIds.length) {
     throw new Error('A game needs two to five distinct players.');
   }
@@ -16,7 +35,7 @@ export function startGame(playerIds, cards, random = Math.random) {
   };
 }
 
-export function openingBuild(game, playerId, cardId, cards) {
+export function openingBuild(game: OpeningState, playerId: string, cardId: string | null, cards: Catalog) {
   if (game.phase !== 'opening') throw new Error('The initial building rounds are over.');
   const active = game.players[game.activeSeat];
   if (playerId !== active.id) throw new Error('Wait for your turn.');
@@ -26,7 +45,7 @@ export function openingBuild(game, playerId, cardId, cards) {
   if (cardId !== null && (!card || !Object.hasOwn(cards, cardId) || card.row === 'landmarks')) {
     throw new Error('Choose an establishment or pass.');
   }
-  if (card) {
+  if (card && card.row !== 'landmarks') {
     if (active.coins < card.cost) throw new Error('You cannot afford that establishment.');
     takeFromSupply(game.supply[card.row], card.id);
     active.coins -= card.cost;

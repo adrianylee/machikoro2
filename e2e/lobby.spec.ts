@@ -33,6 +33,14 @@ test('create a private room, join from a second browser, chat and recover the gu
     expect(await guest.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.screenshot({ path: info.outputPath('desktop-lobby.png'), fullPage: true });
     await guest.screenshot({ path: info.outputPath('mobile-lobby.png'), fullPage: true });
+    await expect(page.getByRole('button', { name: 'Start game' })).toBeDisabled();
+    await guest.getByRole('button', { name: 'Ready', exact: true }).click();
+    await page.getByRole('button', { name: 'Start game' }).click();
+    await expect(guest.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
+    const active = await page.getByRole('button', { name: 'Pass', exact: true }).isVisible() ? page : guest;
+    await active.getByRole('button', { name: 'Pass', exact: true }).click();
+    await page.getByRole('button', { name: 'Game Log', exact: true }).click();
+    await expect(page.getByRole('log', { name: 'Game events' }).getByText('passes.')).toBeVisible();
   } finally {
     await phone.close();
   }

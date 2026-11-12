@@ -5,11 +5,6 @@ test('table presents market, cities and readable card details on desktop and a p
   await page.addInitScript(id => {
     localStorage.setItem(`machi-seat:${id}`, 'a'.repeat(64));
   }, roomId);
-  const cards = {
-    bakery: { id: 'bakery', name: 'Bakery', color: 'green', numbers: [2, 3], effect: 'On your turn, receive 2 coins from the bank.', art: '/art/bakery.webp' },
-    wheat: { id: 'wheat', name: 'Wheat Field', color: 'blue', numbers: [1, 2], effect: 'On any turn, receive 1 coin from the bank.', art: '/art/wheat-field.webp' },
-    tower: { id: 'tower', name: 'Radio Tower', color: 'landmark', numbers: [], effect: 'After building, take an extra turn.', art: '/art/radio-tower.webp' },
-  };
   await page.routeWebSocket(`**/api/rooms/${roomId}`, socket => {
     socket.onMessage(() => socket.send(JSON.stringify({
       type: 'room', self: 'aki', hostId: 'aki',
@@ -17,17 +12,16 @@ test('table presents market, cities and readable card details on desktop and a p
       chat: [],
       game: {
         phase: 'opening', openingRound: 2, activePlayerId: 'aki',
-        cards,
         supply: {
-          low: { remaining: 27, stacks: [{ id: 'bakery', count: 3 }, { id: 'wheat', count: 1 }] },
+          low: { remaining: 27, stacks: [{ id: 'bakery', count: 3 }, { id: 'wheat-field', count: 1 }] },
           high: { remaining: 0, stacks: [] },
-          landmarks: { remaining: 15, stacks: [{ id: 'tower', count: 1 }] },
+          landmarks: { remaining: 15, stacks: [{ id: 'radio-tower', count: 1 }] },
         },
         cities: [
-          { id: 'aki', name: 'Aki', coins: 4, establishments: [{ id: 'wheat', count: 1 }], landmarks: [] },
+          { id: 'aki', name: 'Aki', coins: 4, establishments: [{ id: 'wheat-field', count: 1 }], landmarks: [] },
           { id: 'ren', name: 'Ren', coins: 4, establishments: [{ id: 'bakery', count: 1 }], landmarks: [] },
         ],
-        legalBuilds: { bakery: { cost: 1 }, wheat: { cost: 1 }, tower: { cost: 12, blocked: 'Landmarks open after the initial building rounds.' } },
+        legalBuilds: { bakery: { cost: 1 }, 'wheat-field': { cost: 1 }, 'radio-tower': { cost: 12, blocked: 'Landmarks open after the initial building rounds.' } },
       },
     })));
   });

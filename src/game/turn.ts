@@ -1,3 +1,5 @@
+import { counterclockwiseOpponents } from './economy.ts';
+
 export type EstablishmentColor = 'red' | 'blue' | 'green' | 'purple';
 
 export interface EstablishmentActivation {
@@ -54,11 +56,7 @@ export function establishmentActivations(
   }
 
   const active = players[activeSeat];
-  const red = [];
-  for (let offset = 1; offset < players.length; offset++) {
-    const opponent = players[(activeSeat + players.length - offset) % players.length];
-    red.push(...matching(opponent, ['red']));
-  }
+  const red = [...counterclockwiseOpponents(players, activeSeat)].flatMap(player => matching(player, ['red']));
   const blueAndGreen = players.flatMap(player =>
     matching(player, player === active ? ['blue', 'green'] : ['blue']));
   return { red, blueAndGreen, purple: matching(active, ['purple']) };

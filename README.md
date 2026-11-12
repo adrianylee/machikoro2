@@ -1,6 +1,6 @@
 # Machi Koro 2
 
-A private multiplayer table for the 2021 Pandasaurus edition. Development is in progress. The local lobby works and the game table can be exercised with a browser fixture. The full card catalog and server-authoritative game are still being implemented.
+A private multiplayer table for the 2021 Pandasaurus edition. The base-game catalog and authoritative rules run in the local Cloudflare Worker. The game is under development while the artwork, room controls, and production verification are completed.
 
 ## Run locally
 
@@ -22,7 +22,7 @@ npx playwright install chromium
 npx playwright test
 ```
 
-The browser suite starts the local Worker and serves the compiled assets. It currently tests room creation, independent seats, WebSocket chat, browser reload recovery, and the layout of the market, cities, and card details. The game table layout test supplies a fixture. The rule and card evidence is in [RULES_AUDIT.md](RULES_AUDIT.md).
+The browser suite starts the local Worker and serves the compiled assets. It currently tests room creation, independent seats, WebSocket chat, browser reload recovery, and the layout of the market, cities, and card details. The game table layout test supplies a fixture. Separate integration tests exercise full real games for two to five seats, reconnects, and rematches. The rule and card evidence is in [RULES_AUDIT.md](RULES_AUDIT.md).
 
 ## Production configuration
 

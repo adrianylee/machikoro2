@@ -1,45 +1,14 @@
 import { useRef, useState } from 'react';
+import type { MatchAction } from '../game/match.ts';
+import { TABLE_CARDS } from '../game/view.ts';
+import type { GameView, TableCard } from '../game/view.ts';
+import { EffectChoice } from './EffectChoice.tsx';
 
 const rows = [
   ['low', 'Establishments · 1–6'],
   ['high', 'Establishments · 7–12'],
   ['landmarks', 'Landmarks'],
 ] as const;
-
-export interface TableCard {
-  id: string;
-  name: string;
-  color: 'red' | 'blue' | 'green' | 'purple' | 'landmark';
-  numbers: number[];
-  effect: string;
-  art?: string;
-}
-
-interface Stack {
-  id: string;
-  count: number;
-}
-
-export interface TableCity {
-  id: string;
-  name: string;
-  coins: number;
-  establishments: Stack[];
-  landmarks: Stack[];
-}
-
-export interface GameView {
-  phase: 'opening' | 'roll' | 'build' | 'choice' | 'finished';
-  activePlayerId: string;
-  openingRound?: number;
-  dice?: number[];
-  cards: Record<string, TableCard>;
-  supply: Record<(typeof rows)[number][0], { remaining: number; stacks: Stack[] }>;
-  cities: TableCity[];
-  legalBuilds: Record<string, { cost: number; blocked?: string }>;
-}
-
-export type TableAction = { type: 'roll'; dice: 1 | 2 } | { type: 'build'; cardId: string | null };
 
 export function tablePhase(game: GameView) {
   switch (game.phase) {
@@ -68,7 +37,7 @@ export function GameTable({ game, self, online, send }: {
   game: GameView;
   self: string;
   online: boolean;
-  send: (action: TableAction) => boolean;
+  send: (action: MatchAction) => boolean;
 }) {
   const [cityId, setCityId] = useState(self);
   const [selection, setSelection] = useState<{ cardId: string; market: boolean } | null>(null);
@@ -76,8 +45,9 @@ export function GameTable({ game, self, online, send }: {
   const city = game.cities.find(entry => entry.id === cityId);
   const activeCity = game.cities.find(entry => entry.id === game.activePlayerId);
   const isActive = game.activePlayerId === self;
+  const winner = game.cities.find(entry => entry.id === game.winner);
   const canBuild = online && isActive && (game.phase === 'opening' || game.phase === 'build');
-  const selected = selection && game.cards[selection.cardId];
+  const selected = selection && TABLE_CARDS[selection.cardId];
   const offer = selected && selection.market ? game.legalBuilds[selected.id] : undefined;
 
   function openCard(cardId: string, market: boolean) {
@@ -86,12 +56,12 @@ export function GameTable({ game, self, online, send }: {
   }
 
   return <div className="game-stage">
-    <section className="panel turn-controls" aria-label="Turn controls">
+    {game.phase === 'finished' ? <section className="panel turn-controls" aria-label="Game result"><h2>{winner?.name ?? 'A player'} wins!</h2></section> : <section className="panel turn-controls" aria-label="Turn controls">
       <div>
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
         {canBuild && <p className="muted">{game.phase === 'opening' ? 'Build an establishment or pass.' : 'Build one card or pass.'}</p>}
       </div>
-      {!!game.dice?.length && <div className="dice-display" aria-label={`Rolled ${game.dice.join(' and ')}`}>
+      {!!game.dice?.length && <div key={game.dice.join("-")} className="dice-display" aria-label={`Rolled ${game.dice.join(' and ')}`}>
         {game.dice.map((die, index) => <span key={index}>{die}</span>)}
       </div>}
       {online && isActive && game.phase === 'roll' && <div className="turn-buttons">
@@ -99,13 +69,15 @@ export function GameTable({ game, self, online, send }: {
         <button className="primary" onClick={() => send({ type: 'roll', dice: 2 })}>Roll 2 dice</button>
       </div>}
       {canBuild && <button className="secondary" onClick={() => send({ type: 'build', cardId: null })}>Pass</button>}
-    </section>
+    </section>}
+    {isActive && game.choice && <EffectChoice key={game.version} game={game} self={self} disabled={!online}
+      choose={decision => send({ type: 'choose', decision })} />}
     <section className="panel market" aria-label="Market">
       <h2>Market</h2>
       {rows.map(([key, label]) => <section className="market-row" key={key}>
         <div className="market-heading"><h3>{label}</h3><span>{game.supply[key].remaining} in deck</span></div>
         <div className="card-row">
-          {game.supply[key].stacks.map(stack => <CardFace key={stack.id} card={game.cards[stack.id]}
+          {game.supply[key].stacks.map(stack => <CardFace key={stack.id} card={TABLE_CARDS[stack.id]}
             count={stack.count} cost={game.legalBuilds[stack.id]?.cost} open={() => openCard(stack.id, true)} />)}
           {!game.supply[key].stacks.length && <p className="muted">Sold out</p>}
         </div>
@@ -122,7 +94,7 @@ export function GameTable({ game, self, online, send }: {
         </label>
       </div>
       <div className="card-row">
-        {[...city.establishments, ...city.landmarks].map(stack => <CardFace key={stack.id} card={game.cards[stack.id]}
+        {[...city.establishments, ...city.landmarks].map(stack => <CardFace key={stack.id} card={TABLE_CARDS[stack.id]}
           count={stack.count} open={() => openCard(stack.id, false)} />)}
         {!city.establishments.length && !city.landmarks.length && <p className="muted">No buildings yet.</p>}
       </div>

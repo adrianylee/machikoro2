@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeSupply, takeFromSupply, visibleSupply } from '../src/game/supply.js';
-import { counterclockwiseOpponents, transfer } from '../src/game/economy.js';
-import { openingBuild, startGame } from '../src/game/opening.js';
+import { makeSupply, takeFromSupply, visibleSupply } from '../src/game/supply.ts';
+import { counterclockwiseOpponents, transfer } from '../src/game/economy.ts';
+import { openingBuild, startGame } from '../src/game/opening.ts';
 
 const cards = Object.fromEntries([
   { id: 'wheat-field', row: 'low', cost: 1, copies: 5 },
