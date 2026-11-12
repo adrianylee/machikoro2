@@ -4,7 +4,7 @@ import type { TableControls, VoteKind } from '../worker/controls.ts';
 import type { MatchAction } from '../game/match.ts';
 
 export type RoomAction = ((MatchAction | { type: 'dice-select'; dice: 1 | 2 }) & { version: number }) | { type: 'chat'; text: string }
-  | { type: 'remove'; playerId: string } | { type: 'start' } | { type: 'rematch'; version: number }
+  | { type: 'remove'; playerId: string } | { type: 'start' } | { type: 'rematch' | 'congratulate'; version: number }
   | { type: 'nudge' } | { type: 'vote-start'; kind: VoteKind } | { type: 'vote-cast'; voteId: number; yes: boolean };
 
 export interface Seat {
@@ -32,7 +32,8 @@ export interface Lobby {
   controls?: TableControls;
 }
 
-export const validRoom = /^[a-f0-9]{32}$/;
+export const validRoom = /^(?:[a-z]{4}|[a-f0-9]{32})$/;
+export const roomPath = /^\/room\/([a-z]{4}|[a-f0-9]{32})\/?$/i;
 const credentialKey = (id: string) => `machi-seat:${id}`;
 const recentRoomKey = 'machi-recent-room';
 

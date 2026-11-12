@@ -22,7 +22,7 @@ function connect(baseURL: string, roomId: string, token: string, name: string) {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           socket.removeEventListener('message', receive);
-          reject(new Error(`The room did not reach the expected state (last phase ${latest?.game?.phase}, version ${latest?.game?.version}).`));
+          reject(new Error(`The room did not reach the expected state (last phase ${latest?.game?.phase}/${latest?.game?.resolutionStage}, version ${latest?.game?.version}).`));
         }, 5000);
         function receive(event: MessageEvent) {
           const message = JSON.parse(event.data) as Wire;
@@ -110,7 +110,15 @@ for (const seats of [2, 3, 4, 5]) test(`${seats} independent connections complet
     expect(winner.landmarks.length === 3 || winner.landmarks.some(card => card.id === 'launch-pad')).toBe(true);
     expect(view.game!.events.at(-1)?.text).toBe('wins the game!');
     const version = view.game!.version;
+    peers[0].send({ type: 'congratulate', version });
+    await peers.at(-1)!.wait(state => state.controls?.celebrations?.length === 1);
+    peers.at(-1)!.send({ type: 'congratulate', version });
+    await peers[0].wait(state => state.controls?.celebrations?.at(-1)?.count === 2);
     peers[0].send({ type: 'rematch', version });
+    await peers[0].wait(state => state.game?.phase === 'finished' && state.controls?.replayReady?.length === 1);
+    for (const peer of peers.slice(1)) peer.send({ type: 'rematch', version });
+    await peers[0].wait(state => !state.game);
+    peers[0].send({ type: 'start' });
     const rematch = await peers[0].wait(state => state.game?.version === version + 1);
     expect(rematch.game?.phase).toBe('opening');
     expect(rematch.game?.cities.map(city => city.coins)).toEqual(Array(seats).fill(5));

@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PointerEvent } from 'react';
-import { createPortal } from 'react-dom';
 import { DICE_REST_MS } from '../game/match.ts';
-import type { ThrowMotion } from '../game/match.ts';
 import type { GameView } from '../game/view.ts';
 
 const pips = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]];
@@ -36,51 +33,26 @@ export function DiceGlyph({ count }: { count: 1 | 2 }) {
 export function DiceTray({ selected, onSelect, onThrow }: {
   selected?: 1 | 2;
   onSelect: (dice: 1 | 2) => boolean;
-  onThrow: (dice: 1 | 2, motion?: ThrowMotion) => boolean;
+  onThrow: (dice: 1 | 2) => boolean;
 }) {
   const [count, setCount] = useState<1 | 2>(selected ?? 1);
-  const [position, setPosition] = useState<ThrowMotion>();
   const [pending, setPending] = useState(false);
-  const origin = useRef<ThrowMotion | undefined>(undefined);
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timeout.current), []);
-  const dice = <><Die face={1} color="pink" />{count === 2 && <Die face={5} color="green" />}</>;
-
-  function select(value: 1 | 2) {
-    if (onSelect(value)) setCount(value);
-  }
-  function send(motion?: ThrowMotion) {
-    if (pending || !onThrow(count, motion)) return;
+  function throwDice() {
+    if (pending || !onThrow(count)) return;
     setPending(true);
     timeout.current = setTimeout(() => setPending(false), 2500);
   }
-  function release(event: PointerEvent<HTMLButtonElement>) {
-    if (!origin.current) return;
-    const { x, y } = origin.current;
-    origin.current = undefined;
-    setPosition(undefined);
-    send({ x: (event.clientX - x) / 140, y: (event.clientY - y) / 140 });
-  }
   return <div className="dice-tray">
-    <fieldset><legend>Dice</legend>
+    <div className="dice-choices" role="group" aria-label="Dice count">
       {([1, 2] as const).map(value => <button key={value} type="button" className="dice-choice"
         disabled={pending} aria-pressed={count === value} aria-label={value === 1 ? 'Select one die' : 'Select two dice'}
-        onClick={() => select(value)}><DiceGlyph count={value} /></button>)}
-    </fieldset>
-    <button className="throw-dice" type="button" disabled={pending} aria-label={`Throw ${count} ${count === 1 ? 'die' : 'dice'}`}
-      onPointerDown={event => {
-        if (event.button !== 0) return;
-        origin.current = { x: event.clientX, y: event.clientY };
-        setPosition(origin.current);
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={event => { if (origin.current) setPosition({ x: event.clientX, y: event.clientY }); }}
-      onPointerUp={release} onPointerCancel={() => { origin.current = undefined; setPosition(undefined); }}
-      onClick={event => { if (event.detail === 0) send(); }}>
-      <span className="held-dice" style={{ visibility: position ? 'hidden' : undefined }}>{dice}</span>
-      <span>{pending ? 'Throwing…' : 'Drag to throw'}</span>
+        onClick={() => { if (onSelect(value)) setCount(value); }}><DiceGlyph count={value} /></button>)}
+    </div>
+    <button className="primary throw-dice" type="button" disabled={pending} onClick={throwDice}>
+      {pending ? 'Throwing…' : 'Click to throw die'}
     </button>
-    {position && createPortal(<div className="dragged-dice held-dice" style={{ left: position.x, top: position.y }}>{dice}</div>, document.body)}
   </div>;
 }
 

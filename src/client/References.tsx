@@ -5,7 +5,7 @@ import { DiceGlyph } from './Dice.tsx';
 const steps = [
   ['roll', 'Roll dice', <DiceGlyph count={2} />, 'Choose one or two dice.'],
   ['red', 'Restaurants', <Symbol name="cup" />, 'The roller pays rivals, counterclockwise.'],
-  ['blue', 'Primary industries', <Symbol name="gear" />, 'Matching cards pay on anyone’s turn.'],
+  ['blue', 'Primary industries', <><Symbol name="gear" /> <Symbol name="grain" /> <Symbol name="fruit" /> <Symbol name="flower" /></>, 'Matching cards pay on anyone’s turn.'],
   ['green', 'Secondary industries', <Symbol name="shop" />, 'Only the roller’s matching cards pay.'],
   ['purple', 'Major establishments', <Symbol name="major" />, 'The roller resolves their matching cards.'],
   ['landmarks', 'Landmarks', <Symbol name="landmark" />, 'Resolve any effects triggered by the roll.'],

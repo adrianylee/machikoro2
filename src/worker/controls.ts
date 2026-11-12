@@ -10,16 +10,25 @@ interface Vote {
   ballots: Record<string, boolean>;
   turn: number;
 }
+export interface Celebration { id: number; count: number; at: number; sound: 0 | 1 }
+
 export interface TableControls {
   revision: number;
   vote?: Vote;
   nudge?: { target: string; count: number; turn: number; at?: number };
+  replayReady?: string[];
+  celebrations?: Celebration[];
   result?: { revision: number; text: string; at: number };
 }
 
 interface Room {
   game: Match | null;
   controls?: TableControls;
+}
+
+interface ReplayRoom extends Room {
+  players: { id: string }[];
+  nextGameVersion?: number;
 }
 
 export function syncControls(room: Room) {
@@ -53,6 +62,41 @@ export function resolveVote(room: Room, connected: ReadonlySet<string>) {
     syncControls(room);
   }
   return true;
+}
+
+export function resolveRematch(room: ReplayRoom, connected: ReadonlySet<string>) {
+  if (room.game?.phase !== 'finished') return false;
+  const seats = room.players.filter(seat => connected.has(seat.id));
+  const ready = room.controls?.replayReady;
+  if (!seats.length || !ready || seats.some(seat => !ready.includes(seat.id))) return false;
+  room.nextGameVersion = room.game.version + 1;
+  room.players = seats;
+  room.game = null;
+  delete room.controls;
+  return true;
+}
+
+export function postgameCommand(room: ReplayRoom, playerId: string, data: Record<string, unknown>, connected: ReadonlySet<string>) {
+  const game = room.game;
+  if (game?.phase !== 'finished' || data.version !== game.version) throw new RuleError('The game must be finished.');
+  const controls = room.controls ??= { revision: 0 };
+  if (data.type === 'rematch') {
+    const ready = controls.replayReady ??= [];
+    if (!ready.includes(playerId)) ready.push(playerId);
+    resolveRematch(room, connected);
+    return;
+  }
+  if (!game.winner) throw new RuleError('There is no winner to congratulate.');
+  const events = controls.celebrations ??= [];
+  const previous = events.at(-1);
+  const at = Date.now();
+  events.push({
+    id: (previous?.id ?? 0) + 1,
+    count: previous && at - previous.at < 2000 ? previous.count + 1 : 1,
+    at,
+    sound: Math.random() < .5 ? 0 : 1,
+  });
+  if (events.length > 64) events.shift();
 }
 
 export function controlsCommand(room: Room, playerId: string, data: Record<string, unknown>, connected: ReadonlySet<string>) {

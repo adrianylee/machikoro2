@@ -29,7 +29,7 @@ export interface ThrowMotion { x: number; y: number }
 export type GameSound = 'roll' | 'income' | 'payment' | 'build' | 'win';
 export interface PlayerStats {
   stolen: number; earned: number; diceTotal: number; diceCount: number;
-  thinking: number; nudges: number; chats: number;
+  thinking: number; nudges: number; chats: number; built?: number;
 }
 
 export const COIN_FLIGHT_MS = 1050;
@@ -61,6 +61,7 @@ export interface Match extends OpeningState {
   resolvingStep?: ResolutionStage | 'roll';
   stats?: Record<string, PlayerStats>;
   turnStartedAt?: number;
+  turnBeganAt?: number;
   choice: Choice | null;
   extraTurn: boolean;
   receivedCoins: boolean;
@@ -70,11 +71,12 @@ export interface Match extends OpeningState {
 }
 
 export function startMatch(ids: string[], random = Math.random): Match {
-  const game = {
+  const game: Match = {
     ...startGame(ids, CARDS, random),
-    roll: null, turnStartedAt: Date.now(), choice: null, extraTurn: false, receivedCoins: false,
+    roll: null, turnStartedAt: Date.now(), turnBeganAt: Date.now(), choice: null, extraTurn: false, receivedCoins: false,
     winner: null, version: 0, events: [],
   };
+  for (const id of ids) playerStats(game, id).built = 0;
   log(game, game.players[game.activeSeat], 'opens the first building round.');
   return game;
 }
@@ -282,7 +284,7 @@ export function advanceResolution(game: Match, delay: number) {
       game.phase = resolution.stage === 'resume-opening' ? 'opening' : 'roll';
       delete game.resolution;
       delete game.resolvingStep;
-      game.turnStartedAt = Date.now();
+      game.turnStartedAt = game.turnBeganAt = Date.now();
       game.version++;
       return true;
     }
@@ -410,13 +412,17 @@ function performBuild(game: Match, cardId: string | null, delay: number) {
   const offer = card && buildOffer(game, active, card);
   if (offer?.blocked) throw new RuleError(offer.blocked);
   const previous = game.events.at(-1)?.id ?? 0;
-  if (card) log(game, active, `builds ${card.name} for ${offer!.cost} ${offer!.cost === 1 ? 'coin' : 'coins'}.`, 'build', { purchase: { cardId: card.id, cost: offer!.cost } });
+  if (card) {
+    const stats = playerStats(game, active.id);
+    stats.built = (stats.built ?? Object.values(active.establishments).reduce((total, count) => total + count, active.landmarks.length)) + 1;
+    log(game, active, `builds ${card.name} for ${offer!.cost} ${offer!.cost === 1 ? 'coin' : 'coins'}.`, 'build', { purchase: { cardId: card.id, cost: offer!.cost } });
+  }
   else log(game, active, 'passes.');
 
   if (game.phase === 'opening') {
     openingBuild(game, active.id, cardId, CARDS);
     game.turnSequence = (game.turnSequence ?? 0) + 1;
-    game.turnStartedAt = Date.now();
+    game.turnStartedAt = game.turnBeganAt = Date.now();
     log(game, activePlayer(game), game.phase === 'opening' ? 'may build an opening establishment.' : 'starts the first turn.');
     if (card && delay >= 500) {
       game.resolvingStep = undefined;
@@ -459,7 +465,7 @@ function finishTurn(game: Match) {
   delete game.resolvingStep;
   delete game.diceSelection;
   game.choice = null;
-  game.turnStartedAt = Date.now();
+  game.turnStartedAt = game.turnBeganAt = Date.now();
   game.extraTurn = false;
   game.phase = 'roll';
   log(game, activePlayer(game), 'may roll.');
@@ -488,7 +494,7 @@ export function skipTurn(game: Match) {
     delete game.resolvingStep;
     openingBuild(game, player.id, null, CARDS);
     game.turnSequence = (game.turnSequence ?? 0) + 1;
-    game.turnStartedAt = Date.now();
+    game.turnStartedAt = game.turnBeganAt = Date.now();
   } else {
     game.extraTurn = false;
     finishTurn(game);

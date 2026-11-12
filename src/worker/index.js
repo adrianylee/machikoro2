@@ -1,14 +1,14 @@
 import { DurableObject } from 'cloudflare:workers';
 import { gameCommand } from './game-commands.ts';
 import { advanceResolution, playerStats, RuleError } from '../game/match.ts';
-import { controlsCommand, resolveVote, syncControls } from './controls.ts';
+import { controlsCommand, postgameCommand, resolveRematch, resolveVote, syncControls } from './controls.ts';
 import { matchView } from '../game/view.ts';
 import { addChat, joinRoom, publicLobby, removeSeat } from './lobby.js';
 import { makeRoomPassword, verifyRoomPassword } from './password.ts';
 
 const ROOM_LIFETIME = 30 * 24 * 60 * 60 * 1000;
 import {
-  displayName, InputError, json, parseMessage, requestMessage, ROOM_ID, tokenHash,
+  displayName, InputError, json, parseMessage, randomRoomCode, requestMessage, ROOM_ID, tokenHash,
 } from './protocol.js';
 
 export default {
@@ -18,7 +18,8 @@ export default {
       return json({ ok: true });
     }
 
-    const [, , resource, roomId, extra] = url.pathname.split('/');
+    const [, , resource, rawRoomId, extra] = url.pathname.split('/');
+    const roomId = rawRoomId?.toLowerCase();
     const origin = request.headers.get('Origin');
     if (url.pathname.startsWith('/api/') && origin && origin !== url.origin) {
       return json({ error: 'Cross-origin access is forbidden.' }, 403);
@@ -32,11 +33,12 @@ export default {
       if (!(await env.ROOM_LIMIT.limit({ key })).success) return json({ error: 'Too many requests. Try again in a minute.' }, 429);
     }
     if (isCreate) {
-      const id = crypto.randomUUID().replaceAll('-', '');
-      const result = await env.ROOMS.getByName(id).fetch(
-        new Request(new URL('/initialize', url), request),
-      );
-      return result.ok ? json({ roomId: id }, 201) : result;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const id = randomRoomCode();
+        const result = await env.ROOMS.getByName(id).fetch(new Request(new URL('/initialize', url), request.clone()));
+        if (result.status !== 409) return result.ok ? json({ roomId: id }, 201) : result;
+      }
+      return json({ error: 'Could not reserve a room code. Try again.' }, 503);
     }
     if (url.pathname.startsWith('/api/') && resource === 'rooms' && ROOM_ID.test(roomId) &&
         extra === undefined && request.method === 'GET') {
@@ -64,8 +66,8 @@ export class Room extends DurableObject {
         if (storage.get('room')) return json({ error: 'Room already exists.' }, 409);
         const room = { players: [], chat: [], game: null, password, lastActivity: Date.now() };
         joinRoom(room, hash, name);
-        await this.ctx.storage.setAlarm(room.lastActivity + ROOM_LIFETIME);
         storage.put('room', room);
+        await this.ctx.storage.setAlarm(room.lastActivity + ROOM_LIFETIME);
         return json({ ok: true }, 201);
       } catch (error) {
         if (!(error instanceof InputError)) throw error;
@@ -122,12 +124,13 @@ export class Room extends DurableObject {
       } else if (data.type === 'chat') {
         addChat(room, playerId, data.text, Date.now());
         if (room.game && room.game.phase !== 'finished') playerStats(room.game, playerId).chats++;
+      } else if (data.type === 'rematch' || data.type === 'congratulate') {
+        postgameCommand(room, playerId, data, online);
       } else if (data.type === 'nudge' || data.type === 'vote-start' || data.type === 'vote-cast') {
         controlsCommand(room, playerId, data, online);
       } else if (!gameCommand(room, playerId, data, Math.random, this.resolutionDelay(), online)) {
         return;
       }
-      if (data.type === 'rematch') delete room.controls;
       syncControls(room);
       this.save(room);
       if (oldResolution !== room.game?.resolution) await this.scheduleAlarm(room);
@@ -182,7 +185,8 @@ export class Room extends DurableObject {
     if (!socket.deserializeAttachment()) return;
     const room = this.ctx.storage.kv.get('room');
     if (!room) return;
-    if (resolveVote(room, this.onlinePlayers(socket))) {
+    const online = this.onlinePlayers(socket);
+    if (resolveVote(room, online) || resolveRematch(room, online)) {
       this.save(room);
       await this.scheduleAlarm(room);
     }

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { GameView } from '../src/game/view.ts';
 
-test('special effect choices and the host rematch use the game command protocol', async ({ page }, info) => {
+test('special effect choices, congratulations and results use the game command protocol', async ({ page }, info) => {
   const roomId = 'b'.repeat(32);
   await page.addInitScript(id => localStorage.setItem(`machi-seat:${id}`, 'b'.repeat(64)), roomId);
   const game: GameView = {
@@ -13,18 +13,20 @@ test('special effect choices and the host rematch use the game command protocol'
       { id: 'ren', name: 'Ren', coins: 5, establishments: [{ id: 'bakery', count: 2 }], landmarks: [] },
     ],
     legalBuilds: {},
+    stats: { aki: { nudges: 729, stolen: 15, earned: 42, diceTotal: 18, diceCount: 5, thinking: 1208000, chats: 3, built: 4 } },
   };
   const commands: unknown[] = [];
+  const controls = { revision: 0, replayReady: [] as string[], celebrations: [] as { id: number; count: number; at: number; sound: number }[] };
   await page.routeWebSocket(`**/api/rooms/${roomId}`, socket => {
     const emit = () => socket.send(JSON.stringify({
       type: 'room', self: 'aki', hostId: 'aki', chat: [],
-      players: [{ id: 'aki', name: 'Aki', online: true }, { id: 'ren', name: 'Ren', online: true }], game,
+      players: [{ id: 'aki', name: 'Aki', online: true }, { id: 'ren', name: 'Ren', online: true }], game, controls,
     }));
     socket.onMessage(message => {
       const command = JSON.parse(String(message));
       if (command.type === 'hello') return emit();
       commands.push(command);
-      game.version++;
+      if (command.type === 'choose') game.version++;
       if (command.type === 'choose' && command.decision.kind === 'exchange') {
         game.choice = { kind: 'move', recipientId: 'ren' };
       } else if (command.type === 'choose') {
@@ -32,8 +34,10 @@ test('special effect choices and the host rematch use the game command protocol'
         game.phase = 'finished';
         game.winner = 'aki';
       } else if (command.type === 'rematch') {
-        game.phase = 'opening';
-        game.openingRound = 1;
+        controls.replayReady = ['aki'];
+      } else if (command.type === 'congratulate') {
+        const count = controls.celebrations.length + 1;
+        controls.celebrations.push({ id: count, count, at: Date.now(), sound: 0 });
       }
       emit();
     });
@@ -54,11 +58,24 @@ test('special effect choices and the host rematch use the game command protocol'
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: 'Play again' })).toBeInViewport();
   await page.screenshot({ path: info.outputPath('victory-phone.png') });
+  await page.getByLabel('Most annoying: 729 nudges', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toHaveText('Most annoying: 729 nudges');
+  await page.getByRole('button', { name: 'Show detailed statistics' }).click();
+  const statistics = page.getByRole('dialog', { name: 'Detailed statistics' });
+  await expect(statistics.getByRole('row', { name: /Aki \(you\)/ })).toHaveAttribute('data-self', 'true');
+  await statistics.getByRole('button', { name: 'Close statistics' }).click();
+  const sound = page.waitForResponse(response => response.url().endsWith('/confetti-pop-sound-effect.mp3') && response.ok());
+  await page.getByRole('button', { name: 'Congratulate' }).click();
+  await sound;
+  await page.getByRole('button', { name: 'Congratulate' }).click();
+  await expect(page.locator('.confetti-full[data-burst]')).toHaveCount(2);
   await page.getByRole('button', { name: 'Play again' }).click();
-  await expect(page.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Waiting...' })).toBeDisabled();
   expect(commands).toEqual([
     { type: 'choose', version: 23, decision: { kind: 'exchange', give: 'business-center', take: 'bakery', opponentId: 'ren' } },
     { type: 'choose', version: 24, decision: { kind: 'move', cardId: 'business-center' } },
+    { type: 'congratulate', version: 25 },
+    { type: 'congratulate', version: 25 },
     { type: 'rematch', version: 25 },
   ]);
 });

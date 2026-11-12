@@ -24,7 +24,7 @@ npx playwright test
 
 The browser suite starts the local Worker and serves the compiled assets. It currently tests room creation, independent seats, WebSocket chat, browser reload recovery, a full Worker restart, protected rooms, host removal, mute settings, and the layout of the market, cities, and card details. The game table layout test supplies a fixture. Separate integration tests exercise full real games for two to five seats, reconnects, and rematches. The rule and card evidence is in [RULES_AUDIT.md](RULES_AUDIT.md).
 
-The host can start as soon as two to five players are connected. The starting roster keeps its seats on reconnect and on rematch. During play, a majority of connected players can skip the current turn or end the game in a draw.
+New rooms have a four-letter code. Share the code or use **Copy invite link**. The host can start as soon as two to five players are connected. During play, a majority of connected players can skip the current turn or end the game in a draw. After the game, **Play again** returns the connected group to the lobby once each connected player agrees.
 
 Rooms expire after 30 days without a new seat, chat message, or game action. Keep the private link and any password separate. A returning browser uses its saved seat credential.
 

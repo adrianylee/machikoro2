@@ -1,4 +1,17 @@
-export const ROOM_ID = /^[a-f0-9]{32}$/;
+export const ROOM_ID = /^(?:[a-z]{4}|[a-f0-9]{32})$/;
+
+export function randomRoomCode() {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  let code = '';
+  while (code.length < 4) {
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    for (const byte of bytes) {
+      if (byte < 234) code += alphabet[byte % 26];
+      if (code.length === 4) break;
+    }
+  }
+  return code;
+}
 const TOKEN = /^[a-f0-9]{64}$/;
 export const MESSAGE_LIMIT = 2048;
 

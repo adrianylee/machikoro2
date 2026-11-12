@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BuildingArt } from './BuildingArt.tsx';
 import { createPortal } from 'react-dom';
 import { CARDS } from '../game/catalog.ts';
@@ -21,7 +21,7 @@ const paths = {
   bag: 'M9 7 6 3h12l-3 4m-6 0c-3 3-6 5-6 9s4 5 9 5 9-1 9-5-3-6-6-9Zm3 4v7m2-6h-3a1 1 0 0 0 0 2h2a1 1 0 0 1 0 2h-3',
   clover: 'M12 12C3 9 8 0 12 6c4-6 9 3 0 6Zm0 0C5 4 0 15 7 15c-2 6 6 6 5-3Zm0 0c7-8 12 3 5 3 2 6-6 6-5-3Zm0 0v10',
   clock: 'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Zm-10-5v6l4 2',
-  poke: 'M4 12h12l-4-4m4 4-4 4m8-10v12',
+  poke: 'M3 16h3l3 3h8a3 3 0 0 0 3-3v-4a2 2 0 0 0-2-2h-4V5a1.5 1.5 0 0 0-3 0v8l-2-2a2 2 0 0 0-3 2l1 2H3m16-10 1-2m1 4h2',
   chat: 'M3 4h18v13H9l-6 4Zm4 5h10m-10 4h8',
   buildings: 'M3 21h18M4 21V10l4-3 4 3v11m0-11 5-6 3 3v14M7 13h2m-2 4h2m7-5h2m-2 4h2',
   trophy: 'M7 3h10v8a5 5 0 0 1-10 0Zm0 2H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4m-5 4v5m-4 0h8',
@@ -135,7 +135,7 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
   card: TableCard; count: number; cost?: number; blocked?: string;
   unaffordable?: boolean; mini?: boolean; buy?: () => boolean;
 }) {
-  const [preview, setPreview] = useState<{ left: number; top: number }>();
+  const [preview, setPreview] = useState<{ left: number; top: number; width: number; closing?: boolean }>();
   const anchor = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -144,18 +144,25 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
     clearTimeout(timeout.current);
     const rect = anchor.current?.getBoundingClientRect();
     if (!rect) return;
-    const width = Math.min(300, innerWidth - 20);
-    const right = rect.right + width + 10 <= innerWidth;
-    const left = rect.left >= width + 10;
-    const side = right ? rect.right + 3 : left ? rect.left - width - 3 : rect.left;
-    const vertical = right || left ? rect.top : rect.bottom + 355 <= innerHeight ? rect.bottom + 3 : rect.top - 355;
-    setPreview({ left: Math.max(10, Math.min(side, innerWidth - width - 10)), top: Math.max(10, Math.min(vertical, innerHeight - 355)) });
+    const width = Math.min(innerWidth - 20, mini ? 192 : Math.max(212, rect.width * 1.26));
+    const half = width / 2;
+    const left = Math.max(half + 10, Math.min(rect.left + rect.width / 2, innerWidth - half - 10));
+    const top = mini ? rect.bottom + 5 : rect.top + rect.height / 2;
+    setPreview({ left, top, width });
   }
   function hide() {
     clearTimeout(timeout.current);
-    timeout.current = setTimeout(() => setPreview(undefined), 160);
+    timeout.current = setTimeout(() => setPreview(current => current ? { ...current, closing: true } : current), mini ? 40 : 150);
   }
   useEffect(() => () => clearTimeout(timeout.current), []);
+  useLayoutEffect(() => {
+    if (!preview || preview.closing || !popup.current) return;
+    const height = popup.current.offsetHeight;
+    const min = mini ? 8 : height / 2 + 8;
+    const max = innerHeight - (mini ? height : height / 2) - 8;
+    const top = Math.max(min, Math.min(preview.top, max));
+    if (top !== preview.top) setPreview({ ...preview, top });
+  }, [preview, mini]);
   useEffect(() => {
     if (!preview) return;
     const outside = (event: PointerEvent) => {
@@ -164,9 +171,12 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setPreview(undefined); };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape);
+    const scrolled = () => setPreview(undefined);
+    window.addEventListener('scroll', scrolled, true);
     return () => {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', escape);
+      window.removeEventListener('scroll', scrolled, true);
     };
   }, [preview]);
   return <>
@@ -195,14 +205,19 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
         <CardSummary card={card} />
       </>}
     </div>
-    {preview && createPortal(<div ref={popup} className="panel card-preview" style={preview} role="region" aria-label={`${card.name} details`}
-      onPointerEnter={() => clearTimeout(timeout.current)} onPointerLeave={hide}
-      onFocus={() => clearTimeout(timeout.current)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) hide(); }}>
-      <BuildingArt source={card.art} /><strong>{card.name} <Symbol name={card.icon ?? 'landmark'} /></strong>
-      <CardInformation card={card} />
-      {blocked && <p className="muted">{blocked}</p>}
-      {buy && cost !== undefined && <button type="button" className="primary card-buy" disabled={!!blocked}
-        onClick={() => { if (buy()) setPreview(undefined); }}>Buy {card.name} for {cost} {cost === 1 ? 'coin' : 'coins'}</button>}
+    {preview && createPortal(<div ref={popup} className={`panel card-preview ${mini ? 'card-preview-mini' : 'card-preview-expanded'}`}
+      style={{ left: preview.left, top: preview.top, width: preview.width }} data-color={card.color} data-closing={preview.closing || undefined}
+      role="region" aria-label={`${card.name} details`} aria-hidden={preview.closing || undefined}
+      onAnimationEnd={() => { if (preview.closing) setPreview(undefined); }}>
+      {mini ? <CardSummary card={card} /> : <>
+        <BuildingArt source={card.art} /><strong>{card.name} <Symbol name={card.icon ?? 'landmark'} /></strong>
+        <CardInformation card={card} />
+        {blocked && <p className="muted">{blocked}</p>}
+        {buy && cost !== undefined && <button type="button" className="primary card-buy" disabled={!!blocked || preview.closing}
+          onPointerEnter={show} onPointerLeave={hide} onFocus={show}
+          onBlur={event => { if (!anchor.current?.contains(event.relatedTarget)) hide(); }}
+          onClick={() => { if (buy()) setPreview(undefined); }}>Buy {card.name} for {cost} {cost === 1 ? 'coin' : 'coins'}</button>}
+      </>}
     </div>, document.body)}
   </>;
 }

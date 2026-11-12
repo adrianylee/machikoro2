@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gameCommand } from '../src/worker/game-commands.ts';
+import { postgameCommand, resolveRematch } from '../src/worker/controls.ts';
 import { matchView } from '../src/game/view.ts';
 
 const roomWithGuests = () => ({
@@ -34,14 +35,20 @@ test('commands enforce the active seat and reject retries before mutating the ga
   assert.equal(visible.version, 1);
 });
 
-test('rematch requires a completed version and invalidates commands from the last game', () => {
+test('replay waits for connected seats and invalidates commands from the last game', () => {
   const room = roomWithGuests();
   gameCommand(room, 'a', { type: 'start' }, () => 0);
-  assert.throws(() => gameCommand(room, 'a', { type: 'rematch', version: 0 }), /Finish/);
+  const connected = new Set(['a', 'b']);
+  assert.throws(() => postgameCommand(room, 'a', { type: 'rematch', version: 0 }, connected), /finished/);
   room.game.phase = 'finished';
   room.game.version = 51;
-  assert.throws(() => gameCommand(room, 'a', { type: 'rematch', version: 50 }), /Finish/);
-  gameCommand(room, 'a', { type: 'rematch', version: 51 }, () => 0);
+  assert.throws(() => postgameCommand(room, 'a', { type: 'rematch', version: 50 }, connected), /finished/);
+  postgameCommand(room, 'b', { type: 'rematch', version: 51 }, connected);
+  assert.equal(room.game.phase, 'finished');
+  assert.equal(resolveRematch(room, connected), false);
+  postgameCommand(room, 'a', { type: 'rematch', version: 51 }, connected);
+  assert.equal(room.game, null);
+  gameCommand(room, 'a', { type: 'start' }, () => 0);
   assert.equal(room.game.phase, 'opening');
   assert.equal(room.game.version, 52);
   assert.throws(() => gameCommand(room, 'a', { type: 'build', cardId: null, version: 51 }), /table changed/);
