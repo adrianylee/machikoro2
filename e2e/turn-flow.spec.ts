@@ -38,6 +38,17 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
       });
     }
     await starting.getByRole('button', { name: 'Click to throw die' }).click();
+    const thrown = second.locator('.flying-die').first();
+    await expect(thrown).toBeVisible();
+    await expect.poll(() => thrown.evaluate(piece => {
+      const movement = piece.getAnimations().map(animation => (animation.effect as KeyframeEffect).getKeyframes())
+        .find(frames => frames[0]?.transform);
+      const rotation = piece.querySelector('.die-cube')?.getAnimations()
+        .map(animation => (animation.effect as KeyframeEffect).getKeyframes()).find(frames => frames[0]?.transform);
+      return [movement, rotation].every(frames => frames &&
+        new Set(frames.slice(0, 30).map(frame => frame.transform)).size > 10 &&
+        new Set(frames.slice(-12).map(frame => frame.transform)).size === 1);
+    })).toBe(true);
     await expect(second.locator('.phase-banner').getByLabel('Elapsed turn time')).toBeVisible();
     await expect(second.getByRole('heading', { name: 'Build', exact: true })).toBeVisible({ timeout: 23_000 });
     if (process.env.MACHIKORO_TEST_URL) {

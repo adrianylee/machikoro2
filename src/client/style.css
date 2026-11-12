@@ -460,10 +460,10 @@ img[data-sprite-pending] { visibility: hidden; }
 .bank-card { position: relative; padding: 6px; border: 1px solid var(--outline); border-top: 4px solid #151719; border-radius: 8px; background: var(--card-paper); }
 .bank-card img { display: block; width: 100%; height: auto; aspect-ratio: 1.18; object-fit: contain; }
 .bank-card .card-symbol[data-symbol="bag"] { color: var(--card-text); position: absolute; top: 6px; right: 6px; font-size: 1.35rem; }
-.card-preview { pointer-events: none; overflow: hidden; }
+.card-preview { overflow: hidden; }
 .card-preview-expanded img { height: min(155px, 26vh); object-fit: contain; }
-.card-preview .card-buy { pointer-events: auto; font-size: .83rem; padding: 6px; }
-.card-preview[data-closing] .card-buy { pointer-events: none; }
+.card-preview .card-buy { font-size: .83rem; padding: 6px; }
+.card-preview[data-closing] { pointer-events: none; }
 .card-preview-expanded { transform: translate(-50%, -50%); border-top: 4px solid var(--card-preview-edge, var(--accent)); animation: card-grow .19s ease-out both; }
 .card-preview-expanded[data-color="red"] { --card-preview-edge: var(--red); }
 .card-preview-expanded[data-color="blue"] { --card-preview-edge: var(--blue); }

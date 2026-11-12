@@ -197,15 +197,8 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
       onPointerEnter={event => { if (!inline && event.pointerType !== 'touch') show(); }}
       onPointerLeave={event => {
         if (inline || event.pointerType === 'touch' || keyboardPreview.current) return;
-        const button = popup.current?.querySelector('button:not(:disabled)');
-        if (event.relatedTarget === button) return;
-        const tile = event.currentTarget.getBoundingClientRect();
-        const target = button?.getBoundingClientRect();
-        // Only allow a short crossing from the card toward its Buy button.
-        const towardBuy = target && event.clientX > tile.left && event.clientX < tile.right &&
-          ((event.clientY >= tile.bottom - 1 && target.top >= tile.bottom - 1) ||
-           (event.clientY <= tile.top + 1 && target.bottom <= tile.top + 1));
-        hide(towardBuy ? 220 : 0);
+        if (event.relatedTarget instanceof Node && popup.current?.contains(event.relatedTarget)) return;
+        hide(mini ? 100 : 0);
       }} onFocus={() => { if (!inline) { keyboardPreview.current = true; show(); } }}
       onBlur={event => {
         keyboardPreview.current = false;
@@ -235,6 +228,16 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
     {preview && createPortal(<div ref={popup} className={`panel card-preview ${mini ? 'card-preview-mini' : 'card-preview-expanded'}`}
       style={{ left: preview.left, top: preview.top, width: preview.width }} data-color={card.color} data-closing={preview.closing || undefined}
       role="region" aria-label={`${card.name} details`} aria-hidden={preview.closing || undefined}
+      onPointerEnter={() => clearTimeout(timeout.current)}
+      onPointerLeave={event => {
+        if (event.pointerType === 'touch' || keyboardPreview.current || popup.current?.contains(document.activeElement)) return;
+        if (!(event.relatedTarget instanceof Node && anchor.current?.contains(event.relatedTarget))) hide();
+      }}
+      onPointerDown={event => {
+        if (event.pointerType === 'mouse' && !(event.target instanceof Element && event.target.closest('button'))) {
+          event.preventDefault();
+        }
+      }}
       onAnimationEnd={() => { if (preview.closing) setPreview(undefined); }}>
       {mini ? <CardSummary card={card} /> : <>
         <CardMeta card={card} count={count} cost={ownerName ? undefined : cost ?? card.prices[0]} />
@@ -243,8 +246,9 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
         <CardInformation card={card} />
         {blocked && <p className="muted">{blocked}</p>}
         {buy && cost !== undefined && <button type="button" className="primary card-buy" disabled={!!blocked || preview.closing}
-          onPointerEnter={show} onPointerLeave={event => { if (!(event.relatedTarget instanceof Node && anchor.current?.contains(event.relatedTarget))) hide(); }} onFocus={show}
-          onBlur={event => { if (!anchor.current?.contains(event.relatedTarget)) hide(); }}
+          onBlur={event => {
+            if (!popup.current?.matches(':hover') && !anchor.current?.contains(event.relatedTarget)) hide();
+          }}
           onClick={() => { if (buy()) setPreview(undefined); }}>Buy {card.name} for {cost} {cost === 1 ? 'coin' : 'coins'}</button>}
       </>}
     </div>, document.body)}
