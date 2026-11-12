@@ -6,6 +6,7 @@ test('table presents market, cities and readable card details on desktop and a p
     localStorage.setItem(`machi-seat:${id}`, 'a'.repeat(64));
   }, roomId);
   let emit: () => void;
+  const commands: { type: string; cardId?: string }[] = [];
   let strongerRival = false;
   await page.routeWebSocket(`**/api/rooms/${roomId}`, socket => {
     emit = () => socket.send(JSON.stringify({
@@ -29,11 +30,14 @@ test('table presents market, cities and readable card details on desktop and a p
         legalBuilds: { bakery: { cost: 1 }, 'wheat-field': { cost: 1 }, 'radio-tower': { cost: 12, blocked: 'Landmarks open after the initial building rounds.' }, observatory: { cost: 14 } },
       },
     }));
-    socket.onMessage(emit);
+    socket.onMessage(message => {
+      commands.push(JSON.parse(String(message)));
+      emit();
+    });
   });
   await page.goto(`/room/${roomId}`);
   await expect(page.getByRole('heading', { name: 'Opening round 2 of 3' }).first()).toBeVisible();
-  const market = page.getByRole('region', { name: 'Market' });
+  const market = page.getByRole('region', { name: 'Market', exact: true });
   await expect(market.getByRole('group', { name: 'Bakery, 3 copies' })).toBeVisible();
   const leaderboard = page.getByRole('region', { name: 'Leaderboard overview' });
   const standings = leaderboard.getByRole('heading', { level: 3 });
@@ -44,6 +48,7 @@ test('table presents market, cities and readable card details on desktop and a p
   await expect(modifiers.getByRole('group', { name: 'Radio Tower' })).toHaveCount(0);
   await modifiers.getByRole('group', { name: 'Farmers Market' }).hover();
   await expect(page.getByRole('region', { name: 'Farmers Market details' })).toContainText('Owned by Ren');
+  await page.getByRole('heading', { name: 'Player order' }).hover();
   strongerRival = true;
   emit!();
   await expect(standings).toHaveText(['1. Bo', '2. Ren', '3. Aki (you)']);
@@ -70,10 +75,24 @@ test('table presents market, cities and readable card details on desktop and a p
   await expect(details.getByText('Activates on 2 or 3')).toBeVisible();
   await expect(details.getByRole('button', { name: 'Buy Bakery for 1 coin' })).toBeEnabled();
   await page.screenshot({ path: info.outputPath('expanded-card.png') });
-  await market.getByRole('group', { name: 'Bakery, 3 copies' }).click({ position: { x: 5, y: 5 } });
+  const wheat = market.getByRole('group', { name: 'Wheat Field', exact: true });
+  const overlap = await details.evaluate(async (popup, adjacent) => {
+    await Promise.all(popup.getAnimations().map(animation => animation.finished));
+    const front = popup.getBoundingClientRect();
+    const behind = adjacent.getBoundingClientRect();
+    return { x: Math.min(front.right, behind.right) - 3, y: Math.max(front.top, behind.top) + 15,
+      left: Math.max(front.left, behind.left), bottom: Math.min(front.bottom, behind.bottom) };
+  }, (await wheat.elementHandle())!);
+  expect(overlap.x).toBeGreaterThan(overlap.left);
+  expect(overlap.y).toBeLessThan(overlap.bottom);
+  await page.mouse.click(overlap.x, overlap.y);
+  await expect(details).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Wheat Field details' })).toHaveCount(0);
+  await details.getByRole('button', { name: 'Buy Bakery for 1 coin' }).click();
+  await expect.poll(() => commands.some(command => command.type === 'build' && command.cardId === 'bakery')).toBe(true);
   await page.getByRole('heading', { name: 'Market', exact: true }).hover();
   await expect(details).toBeHidden();
-  await market.getByRole('group', { name: 'Wheat Field', exact: true }).hover();
+  await wheat.hover();
   await expect(page.getByRole('region', { name: 'Wheat Field details' })).toBeVisible();
   await expect(details).toBeHidden();
   await page.keyboard.press('Escape');

@@ -63,26 +63,66 @@ function seeded(seed: number) {
   };
 }
 
-function bouncePath(width: number, height: number, random: () => number) {
+function throwFrames(width: number, height: number, random: () => number) {
   const edge = Math.floor(random() * 4);
   let x = edge === 0 ? 0 : edge === 1 ? width : random() * width;
   let y = edge === 2 ? 0 : edge === 3 ? height : random() * height;
-  const force = .024 + random() * .025;
+  const force = .036 + random() * .023;
   let vx = (edge === 0 ? 1 : edge === 1 ? -1 : random() < .5 ? -1 : 1) * width * force;
   let vy = (edge === 2 ? 1 : edge === 3 ? -1 : random() < .5 ? -1 : 1) * height * force;
-  return Array.from({ length: 81 }, (_, index) => {
-    if (index) {
+  let lift = 23 + random() * 14;
+  let vz = 2 + random() * 2;
+  let angularSpeed = 1;
+  let tumble = 0;
+  const samples = 100;
+  const frames = Array.from({ length: samples + 1 }, (_, frame) => {
+    if (frame > 0) {
+      if (lift > 0 || vz > 0) {
+        vz -= .64;
+        lift += vz;
+        if (lift <= 0) {
+          lift = 0;
+          vz = vz < -2.6 ? -vz * .44 : 0;
+          vx *= .78;
+          vy *= .78;
+          angularSpeed *= .74;
+        }
+      }
       x += vx;
       y += vy;
-      if (x < 0 || x > width) { x = x < 0 ? -x : 2 * width - x; vx *= -.78; }
-      if (y < 0 || y > height) { y = y < 0 ? -y : 2 * height - y; vy *= -.78; }
-      vx *= .965;
-      vy *= .965;
+      if (x < 0 || x > width) {
+        x = x < 0 ? -x : 2 * width - x;
+        vx *= -.62;
+        angularSpeed *= .85;
+      }
+      if (y < 0 || y > height) {
+        y = y < 0 ? -y : 2 * height - y;
+        vy *= -.62;
+        angularSpeed *= .85;
+      }
+      const airborne = lift > 0;
+      vx *= airborne ? .987 : .89;
+      vy *= airborne ? .987 : .89;
+      angularSpeed *= airborne ? .965 : .89;
+      if (!airborne && Math.hypot(vx, vy) < .18) vx = vy = 0;
+      if (!airborne && angularSpeed < .009) angularSpeed = 0;
+      tumble += angularSpeed;
     }
-    const progress = index / 80;
-    const lift = Math.abs(Math.sin(progress * Math.PI * 7)) * 28 * (1 - progress) ** 2;
-    return { offset: progress, transform: `translate3d(${x}px,${y - lift}px,${lift}px)` };
+    return { offset: frame / samples, x, y, lift, tumble };
   });
+  // End on whole rotations so the server-selected face is already up before the flat die appears.
+  const pitch = random() < .5 ? -1080 : 1080;
+  const yaw = random() < .5 ? -720 : 720;
+  const total = frames.at(-1)!.tumble;
+  return {
+    travel: frames.map(({ offset, x, y, lift }) => ({
+      offset, transform: `translate3d(${x}px,${y - lift * .4}px,${lift}px)`,
+    })),
+    spin: frames.map(({ offset, tumble }) => {
+      const progress = tumble / total;
+      return { offset, transform: `rotateX(${38 + (pitch - 38) * progress}deg) rotateY(${-26 + (yaw + 26) * progress}deg) rotateZ(${16 + 344 * progress}deg)` };
+    }),
+  };
 }
 
 interface ReceivedRoll { game: GameView; receivedAt: number }
@@ -127,21 +167,20 @@ function RolledDice({ roll }: { roll: ReceivedRoll }) {
       animations = Array.from(element.querySelectorAll<HTMLElement>('.flying-die')).flatMap((piece, index) => {
         const margin = 32;
         const random = seeded(presentation!.seed + index * 719);
-        const travel = bouncePath(Math.max(0, width - piece.offsetWidth - margin * 2), Math.max(0, height - piece.offsetHeight - margin * 2), random);
-        const movement = piece.animate(reduce ? [travel.at(-1)!] : travel, { duration: presentation!.duration, fill: 'both' });
+        const { travel, spin } = throwFrames(Math.max(0, width - piece.offsetWidth - margin * 2),
+          Math.max(0, height - piece.offsetHeight - margin * 2), random);
+        const last = travel.at(-1)!.transform;
+        const movement = piece.animate(reduce ? [{ transform: last }, { transform: last }] : travel,
+          { duration: presentation!.duration, fill: 'both' });
         movement.currentTime = Math.min(elapsed, presentation!.duration);
         const cube = piece.querySelector('.die-cube')!;
-        const spin = cube.animate([
-          { transform: 'rotate3d(1, 1, 0, 30deg)' },
-          { transform: `rotateX(${index ? -770 : 950}deg) rotateY(1060deg) rotateZ(400deg)`, offset: .65 },
-          { transform: `rotateX(${index ? -1080 : 1440}deg) rotateY(1440deg) rotateZ(720deg)` },
-        ], { duration: presentation!.duration, easing: 'ease-out', fill: 'both' });
-        spin.currentTime = Math.min(elapsed, presentation!.duration);
+        const rotation = cube.animate(spin, { duration: presentation!.duration, fill: 'both' });
+        rotation.currentTime = reduce ? presentation!.duration : Math.min(elapsed, presentation!.duration);
         const fade = piece.animate([{ opacity: 1 }, { opacity: 0 }], {
           delay: presentation!.duration + DICE_REST_MS, duration: 600, fill: 'forwards',
         });
         fade.currentTime = elapsed;
-        return [movement, spin, fade];
+        return [movement, rotation, fade];
       });
     }
     const observer = new ResizeObserver(place);
