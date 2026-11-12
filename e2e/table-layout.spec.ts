@@ -18,7 +18,7 @@ test('table presents market, cities and readable card details on desktop and a p
         supply: {
           low: { remaining: 27, stacks: [{ id: 'bakery', count: 3 }, { id: 'wheat-field', count: 1 }] },
           high: { remaining: 0, stacks: [] },
-          landmarks: { remaining: 15, stacks: [{ id: 'radio-tower', count: 1 }] },
+          landmarks: { remaining: 15, stacks: [{ id: 'radio-tower', count: 1 }, { id: 'observatory', count: 1 }] },
         },
         landmarkTriggers: strongerRival ? { 'farmers-market': Date.now() } : undefined,
         cities: [
@@ -26,7 +26,7 @@ test('table presents market, cities and readable card details on desktop and a p
           { id: 'bo', name: 'Bo', coins: 20, establishments: [], landmarks: strongerRival ? [{ id: 'radio-tower', count: 1 }, { id: 'temple', count: 1 }] : [] },
           { id: 'ren', name: 'Ren', coins: 4, establishments: ['bakery', 'vineyard', 'forest', 'cafe', 'wheat-field', 'mine'].map(id => ({ id, count: id === 'vineyard' ? 2 : 1 })), landmarks: [{ id: 'farmers-market', count: 1 }] },
         ],
-        legalBuilds: { bakery: { cost: 1 }, 'wheat-field': { cost: 1 }, 'radio-tower': { cost: 12, blocked: 'Landmarks open after the initial building rounds.' } },
+        legalBuilds: { bakery: { cost: 1 }, 'wheat-field': { cost: 1 }, 'radio-tower': { cost: 12, blocked: 'Landmarks open after the initial building rounds.' }, observatory: { cost: 14 } },
       },
     }));
     socket.onMessage(emit);
@@ -36,7 +36,9 @@ test('table presents market, cities and readable card details on desktop and a p
   const market = page.getByRole('region', { name: 'Market' });
   await expect(market.getByRole('group', { name: 'Bakery, 3 copies' })).toBeVisible();
   const leaderboard = page.getByRole('region', { name: 'Leaderboard overview' });
-  await expect(leaderboard.getByRole('heading', { level: 3 }).first()).toHaveText('1. Ren');
+  const standings = leaderboard.getByRole('heading', { level: 3 });
+  await expect(standings).toHaveText(['1. Ren', '2. Bo', '3. Aki (you)']);
+  await expect(leaderboard.getByRole('group', { name: 'Wheat Field', exact: true }).first()).toBeVisible();
   await expect(leaderboard.getByRole('group', { name: 'Vineyard, 2 copies' })).toContainText('×2');
   const modifiers = page.getByRole('region', { name: 'Landmark modifiers' });
   await expect(modifiers.getByRole('group', { name: 'Radio Tower' })).toHaveCount(0);
@@ -44,15 +46,22 @@ test('table presents market, cities and readable card details on desktop and a p
   await expect(page.getByRole('region', { name: 'Farmers Market details' })).toContainText('Owned by Ren');
   strongerRival = true;
   emit!();
-  await expect(leaderboard.getByRole('heading', { level: 3 }).first()).toHaveText('1. Bo');
+  await expect(standings).toHaveText(['1. Bo', '2. Ren', '3. Aki (you)']);
   await expect(modifiers.locator('.modifier-pulse')).toBeVisible();
   await expect(modifiers.getByRole('group', { name: 'Temple' })).toBeVisible();
   await page.screenshot({ path: info.outputPath('table-desktop.png'), fullPage: true });
   const bank = page.getByRole('region', { name: 'Bank' });
-  await expect(bank).toHaveCSS('background-color', 'rgb(169, 225, 255)');
+  await expect(bank).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  const city = page.getByRole('region', { name: 'Player city' });
+  const [marketBox, cityBox, bankBox, modifiersBox] = await Promise.all(
+    [market, city, bank, modifiers].map(panel => panel.boundingBox()),
+  );
+  const sidebarGap = bankBox!.y - (modifiersBox!.y + modifiersBox!.height);
+  expect(sidebarGap).toBeGreaterThan(0);
+  expect(cityBox!.y - (marketBox!.y + marketBox!.height)).toBeCloseTo(sidebarGap);
   await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(245, 231, 208)');
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
-  await expect(bank).toHaveCSS('background-color', 'rgb(48, 50, 54)');
+  await expect(bank).toHaveCSS('background-color', 'rgb(36, 37, 39)');
   await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(23, 23, 25)');
   await page.screenshot({ path: info.outputPath('table-dark.png'), fullPage: true });
   await page.getByRole('button', { name: 'Switch to light mode' }).click();
@@ -71,13 +80,18 @@ test('table presents market, cities and readable card details on desktop and a p
   await market.getByRole('group', { name: 'Radio Tower, unaffordable' }).hover();
   const landmark = page.getByRole('region', { name: 'Radio Tower details' });
   await expect(landmark.getByText('12 / 16 / 22 ¢')).toBeVisible();
-  await expect(market.getByLabel('Single use on purchase')).toBeVisible();
+  await expect(landmark.locator('.card-meta')).toHaveText('12');
+  await expect(market.getByRole('group', { name: 'Radio Tower, unaffordable' }).locator('.card-meta')).toHaveText('12');
   await expect(landmark.getByRole('button')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await market.getByRole('group', { name: 'Observatory, unaffordable' }).hover();
+  const observatory = page.getByRole('region', { name: 'Observatory details' });
+  await expect(observatory.getByLabel('Persistent effect')).toHaveText('∞');
+  await expect(observatory.locator('.card-meta').getByLabel('14 coins')).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'View Ren' }).click();
   await expect(page.getByRole('region', { name: 'Player city' }).getByRole('heading', { name: 'Ren’s city' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'View Ren' })).toHaveAttribute('aria-pressed', 'true');
-  const city = page.getByRole('region', { name: 'Player city' });
   const filters = city.getByRole('group', { name: 'Filter city properties' });
   await expect(filters.getByRole('button')).toHaveCount(10);
   const fruit = filters.getByRole('button', { name: 'Fruit', exact: true });

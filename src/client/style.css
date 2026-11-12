@@ -368,7 +368,7 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--out
 .table-card[data-unaffordable] { opacity: .78; }
 .table-card[data-unaffordable]:is(:hover,:focus-within) { opacity: 1; }
 .table-card .card-picture { display: grid; gap: 2px; min-width: 0; }
-.table-card .card-meta { position: static; min-height: 29px; font-size: 1.06rem; gap: 3px; }
+.table-card .card-meta, .card-preview-expanded .card-meta { position: static; min-height: 29px; font-size: 1.06rem; gap: 3px; }
 .card-meta .activation, .card-meta .card-count { padding: 2px 3px; border-color: #0002; white-space: nowrap; }
 .card-meta .coin { font-size: 1.32rem; flex: none; }
 .table-card .card-picture img {
@@ -455,13 +455,11 @@ img[data-sprite-pending] { visibility: hidden; }
 .roster .remove-seat { margin-inline-start: auto; }
 .market-neighborhood { align-items: stretch; }
 .market-side { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-.market-side .table-bank { margin-top: auto; width: 100%; display: grid; gap: 8px; align-content: start; background: var(--banner); color: var(--ink); padding: 12px; }
+.market-side .table-bank { margin-top: auto; width: 100%; display: grid; gap: 8px; align-content: start; padding: 12px; }
 .table-bank h2 { font-size: 1.15rem; }
 .bank-card { position: relative; padding: 6px; border: 1px solid var(--outline); border-top: 4px solid #151719; border-radius: 8px; background: var(--card-paper); }
 .bank-card img { display: block; width: 100%; height: auto; aspect-ratio: 1.18; object-fit: contain; }
 .bank-card .card-symbol[data-symbol="bag"] { color: var(--card-text); position: absolute; top: 6px; right: 6px; font-size: 1.35rem; }
-.game-stage { row-gap: 8px; }
-.market-neighborhood + .city { margin-top: -8px; }
 .card-preview { pointer-events: none; overflow: hidden; }
 .card-preview-expanded img { height: min(155px, 26vh); object-fit: contain; }
 .card-preview .card-buy { pointer-events: auto; font-size: .83rem; padding: 6px; }
