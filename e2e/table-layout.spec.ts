@@ -35,7 +35,7 @@ test('table presents market, cities and readable card details on desktop and a p
   await expect(details.getByText('Activates on 2 or 3')).toBeVisible();
   await expect(details.getByRole('button', { name: 'Build', exact: true })).toBeEnabled();
   await page.keyboard.press('Escape');
-  await market.getByRole('button', { name: 'Radio Tower' }).click();
+  await market.getByRole('button', { name: 'Radio Tower, unaffordable' }).click();
   await expect(details.getByRole('button', { name: 'Build', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 390, height: 844 });

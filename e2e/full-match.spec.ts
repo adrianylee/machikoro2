@@ -22,7 +22,7 @@ function connect(baseURL: string, roomId: string, token: string, name: string) {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           socket.removeEventListener('message', receive);
-          reject(new Error('The room did not reach the expected state.'));
+          reject(new Error(`The room did not reach the expected state (last phase ${latest?.game?.phase}, version ${latest?.game?.version}).`));
         }, 5000);
         function receive(event: MessageEvent) {
           const message = JSON.parse(event.data) as Wire;
@@ -71,7 +71,7 @@ function strategy(lobby: Lobby) {
 }
 
 for (const seats of [2, 3, 4, 5]) test(`${seats} independent connections complete a real game, recover a seat, and rematch`, async ({ request, baseURL }) => {
-  test.setTimeout(45_000);
+  test.setTimeout(80_000);
   const tokens = Array.from({ length: seats }, () => [...crypto.getRandomValues(new Uint8Array(32))]
     .map(value => value.toString(16).padStart(2, '0')).join(''));
   const response = await request.post('/api/rooms', { data: { name: 'Player 1', token: tokens[0] } });
@@ -81,27 +81,28 @@ for (const seats of [2, 3, 4, 5]) test(`${seats} independent connections complet
   try {
     const views = await Promise.all(peers.map(peer => peer.wait(view => view.players.length === seats)));
     expect(new Set(views.map(view => view.self)).size).toBe(seats);
-    for (const peer of peers.slice(1)) {
-      peer.send({ type: 'ready', ready: true });
-    }
-    await peers[0].wait(view => view.players.slice(1).every(player => player.ready));
+    await peers[0].wait(view => view.players.every(player => player.online));
     peers[0].send({ type: 'start' });
     let view = await peers[0].wait(view => view.game?.phase === 'opening');
     expect(Object.values(view.game!.supply).map(row => row.stacks.length)).toEqual([5, 5, 5]);
     expect(Object.values(view.game!.supply).every(row => !Object.hasOwn(row, 'deck'))).toBe(true);
 
-    for (let moves = 0; moves < 900 && view.game!.phase !== 'finished'; moves++) {
+    for (let moves = 0; moves < 2000 && view.game!.phase !== 'finished'; moves++) {
       if (moves === seats * 3 + 1) {
         const previous = peers[seats - 1].current()!.self;
         peers[seats - 1].socket.close();
         peers[seats - 1] = connect(baseURL!, roomId, tokens[seats - 1], 'Different name');
         expect((await peers[seats - 1].wait(lobby => !!lobby.game)).self).toBe(previous);
       }
+      view = peers[0].current() ?? view;
       const { activePlayerId, version } = view.game!;
+      if (view.game!.phase === 'finished') break;
       const peer = peers.find(candidate => candidate.current()?.self === activePlayerId)!;
-      const active = await peer.wait(state => state.game?.version === version);
-      peer.send({ ...strategy(active), version });
-      view = await peers[0].wait(state => state.game?.version === version + 1);
+      const active = await peer.wait(state => (state.game?.version ?? -1) >= version);
+      const canAct = active.game!.phase !== 'resolve' && active.game!.phase !== 'finished' && active.game!.activePlayerId === active.self;
+      if (canAct) peer.send({ ...strategy(active), version: active.game!.version });
+      const waitAfter = canAct ? active.game!.version : version;
+      view = await peers[0].wait(state => (state.game?.version ?? -1) > waitAfter);
     }
 
     expect(view.game!.phase).toBe('finished');

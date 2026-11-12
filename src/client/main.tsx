@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { CSSProperties, FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useGameSound } from './sound.ts';
 import { createRoom, newCredential, recentRoom, savedSeat, useRoom, validRoom } from './room.ts';
-import type { Lobby } from './room.ts';
+import type { Lobby, RoomAction } from './room.ts';
 import { GameTable, tablePhase } from './GameTable.tsx';
+import { Notifications } from './Notifications.tsx';
+import { References } from './References.tsx';
+import { Balance } from './Cards.tsx';
 import '@fontsource-variable/dm-sans';
 import '@fontsource/dm-serif-text/400.css';
 import './style.css';
@@ -98,10 +101,14 @@ function Home() {
   </main>;
 }
 
-function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boolean }) {
-  const [tab, setTab] = useState('Table Talk');
+function Activity({ lobby, send }: { lobby: Lobby; send: (action: RoomAction) => boolean }) {
+  const [tab, setTab] = useState('Chat');
   const lastMessage = useRef<HTMLDivElement>(null);
-  const tabs = ['Table Talk', 'Game Log', 'Table Controls'];
+  const tabs = ['Chat', 'Game Log', 'Table Controls'];
+  const latest = [lobby.chat.at(-1)?.id, lobby.game?.events?.at(-1)?.id, lobby.controls?.revision];
+  const seen = useRef(latest);
+  seen.current[tabs.indexOf(tab)] = latest[tabs.indexOf(tab)];
+  const canControl = !!lobby.game && lobby.game.phase !== 'finished';
   useEffect(() => {
     const marker = lastMessage.current;
     if (marker?.parentElement) marker.parentElement.scrollTop = marker.parentElement.scrollHeight;
@@ -109,16 +116,16 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
 
   return <section className="panel activity" aria-label="Table activity">
     <div className="activity-tabs" aria-label="Activity view">
-      {tabs.map(label => <button key={label} aria-pressed={tab === label} onClick={() => setTab(label)}>{label}</button>)}
+      {tabs.map((label, index) => <button key={label} aria-pressed={tab === label} aria-description={latest[index] !== undefined && seen.current[index] !== latest[index] ? 'New activity' : undefined} onClick={() => setTab(label)}>{label}
+        {latest[index] !== undefined && seen.current[index] !== latest[index] && <span className="unread-dot" aria-hidden="true" />}</button>)}
     </div>
-    {tab === 'Table Talk' ? <>
+    {tab === 'Chat' ? <>
       <div className="chat-feed" role="log" aria-label="Chat messages">
         {lobby.chat.length === 0 && <p className="muted">No messages yet.</p>}
         {lobby.chat.map(message => {
           const index = lobby.players.findIndex(seat => seat.id === message.playerId);
           return <article className="message" key={message.id} style={{ borderColor: colors[lobby.players[index]?.color ?? index] }}>
-            <strong>{lobby.players[index]?.name ?? 'Player'}</strong>
-            <p>{message.text}</p>
+            <p><strong>{message.name ?? lobby.players[index]?.name ?? 'Player'}:</strong> {message.text}</p>
           </article>;
         })}
         <div ref={lastMessage} />
@@ -126,7 +133,7 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
       <form className="chat-form" onSubmit={event => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        if (send(String(data.get('text')).trim())) event.currentTarget.reset();
+        if (send({ type: 'chat', text: String(data.get('text')).trim() })) event.currentTarget.reset();
       }}>
         <input aria-label="Chat message" placeholder="Say something…" name="text" maxLength={400} required />
         <button className="primary">Send</button>
@@ -139,29 +146,24 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
         </article>;
       }) : <p className="muted">Game events appear here after the game starts.</p>}
       <div ref={lastMessage} />
-    </div> : <p className="activity-empty muted">{lobby.game ? 'Share the room link to help a player return.' : 'Invite friends to fill the remaining seats.'}</p>}
+    </div> : <div className="activity-empty table-actions">
+      <button className="secondary" disabled={!canControl || lobby.game?.activePlayerId === lobby.self} onClick={() => send({ type: 'nudge' })}>Nudge{lobby.controls?.nudge && ` ×${lobby.controls.nudge.count}`}</button>
+      <button className="secondary" disabled={!canControl || !!lobby.controls?.vote} onClick={() => send({ type: 'vote-start', kind: 'skip' })}>Vote to skip turn</button>
+      <button className="secondary" disabled={!canControl || !!lobby.controls?.vote} onClick={() => send({ type: 'vote-start', kind: 'draw' })}>Vote to draw</button>
+      {lobby.controls?.result && <p className="muted">{lobby.controls.result.text}</p>}
+    </div>}
   </section>;
 }
 
-function RoomView({ id, sound }: { id: string; sound: boolean }) {
+function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: string }) {
   const [credentials, setCredentials] = useState(() => {
     const token = savedSeat(id);
     return token ? { token } as { token: string; name?: string; password?: string } : null;
   });
-  const [notice, setNotice] = useState('');
   const removal = useRef<HTMLDialogElement>(null);
   const [removeId, setRemoveId] = useState('');
   const { lobby, status, error, send } = useRoom(id, credentials);
-  useGameSound(sound, lobby?.game?.events);
-
-  async function invite() {
-    try {
-      await navigator.clipboard.writeText(location.href);
-      setNotice('Invite link copied.');
-    } catch {
-      setNotice('Copy the invite link from your address bar.');
-    }
-  }
+  useGameSound(sound, lobby);
 
   if (!lobby) return <main className="centered">
     <section className="panel entrance">
@@ -185,13 +187,14 @@ function RoomView({ id, sound }: { id: string; sound: boolean }) {
   </main>;
 
   const host = lobby.hostId === lobby.self;
-  const self = lobby.players.find(player => player.id === lobby.self);
-  const canStart = status === 'online' && lobby.players.length >= 2 && lobby.players.slice(1).every(seat => seat.ready);
+  const connected = lobby.players.filter(seat => seat.online).length;
+  const canStart = status === 'online' && connected >= 2;
+  const playerOrder = lobby.game?.turnOrder ?? lobby.players.map(seat => seat.id);
+  const count = lobby.game ? lobby.players.length : connected;
 
   return <main className="content-width room-view">
     <div className="phase-banner">
-      <div><p className="eyebrow">Room {id.slice(0, 6).toUpperCase()} · {lobby.players.length}/5 seats</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
-      <button className="secondary" aria-label="Copy invite link" onClick={invite}><Icon name="link" /> Copy invite</button>
+      <div><p className="eyebrow">Room {id.slice(0, 6).toUpperCase()} · {count} {count === 1 ? 'player' : 'players'}{!lobby.game && ' connected'}</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
     </div>
     <p className="status-line" aria-live="polite">{notice || (status === 'online' ? 'Connected' : 'Reconnecting…')}</p>
     {error && <p className="form-error" role="alert">{error}</p>}
@@ -200,28 +203,30 @@ function RoomView({ id, sound }: { id: string; sound: boolean }) {
         send={action => send({ ...action, version: lobby.game!.version })}
         rematch={host ? () => send({ type: 'rematch', version: lobby.game!.version }) : undefined} /> : <section className="panel room-stage">
         <img src="/art/radio-tower.webp" alt="" />
-        <div><h2>Gather your players</h2><p>Share the invite link with friends. Guests mark ready before the host starts.</p>
-          {host ? <button className="primary lobby-action" disabled={!canStart} onClick={() => send({ type: 'start' })}>Start game</button>
-            : <button className="primary lobby-action" disabled={status !== 'online'}
-              onClick={() => send({ type: 'ready', ready: !self?.ready })}>{self?.ready ? 'Unready' : 'Ready'}</button>}
+        <div><h2>Gather your players</h2><p>{host ? 'Invite friends and start with 2–5 connected players.' : 'The host will start when the group is here.'}</p>
+          {host && <button className="primary lobby-action" disabled={!canStart} onClick={() => send({ type: 'start' })}>Start game</button>}
         </div>
       </section>}
       <aside className="table-sidebar">
         <section className="panel roster">
           <h2>Players</h2>
           <ul>
-            {lobby.players.map((seat, index) => <li key={seat.id} style={{ borderColor: colors[seat.color ?? index] }}>
+            {playerOrder.map((id, index) => {
+              const seat = lobby.players.find(player => player.id === id)!;
+              const city = lobby.game?.cities.find(entry => entry.id === id);
+              return <li key={seat.id} data-active={lobby.game?.phase !== 'finished' && lobby.game?.activePlayerId === id || undefined}
+                style={{ '--player-color': colors[seat.color ?? index] } as CSSProperties}>
+              <span className="seat-number" aria-label={`Turn order ${index + 1}`}>{index + 1}</span>
               <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
-              {lobby.game?.cities.filter(city => city.id === seat.id).map(city => <span className="roster-stats" key={city.id}>
-                {city.coins} coins · {city.landmarks.length}/3
-              </span>)}
-              <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}{!lobby.game && seat.ready ? ' · Ready' : ''}</span>
+              {city && <div className="roster-stats"><Balance amount={city.coins} /> <span>{city.landmarks.length}/3</span></div>}
+              <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}</span>
               {host && !lobby.game && seat.id !== lobby.self && <button className="remove-seat" type="button"
                 aria-label={`Remove ${seat.name}`} onClick={() => { setRemoveId(seat.id); removal.current?.showModal(); }}>Remove</button>}
-            </li>)}
+            </li>; })}
           </ul>
         </section>
-        <Activity lobby={lobby} send={text => send({ type: 'chat', text })} />
+        <References game={lobby.game} />
+        <Activity lobby={lobby} send={send} />
         <dialog ref={removal} className="panel rules" aria-label="Remove player">
           <h2>Remove {lobby.players.find(player => player.id === removeId)?.name ?? 'player'}?</h2>
           <form method="dialog" className="detail-buttons">
@@ -231,6 +236,7 @@ function RoomView({ id, sound }: { id: string; sound: boolean }) {
         </dialog>
       </aside>
     </div>
+    <Notifications lobby={lobby} send={send} />
   </main>;
 }
 
@@ -241,6 +247,7 @@ function App() {
   });
   const [sound, setSound] = useState(() => localStorage.getItem('machi-sound') !== 'off');
   const rules = useRef<HTMLDialogElement>(null);
+  const [notice, setNotice] = useState('');
   const room = /^\/room\/([a-f0-9]{32})\/?$/.exec(location.pathname)?.[1];
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -253,6 +260,14 @@ function App() {
       <div className="content-width header-inner">
         <a className="brand" href="/"><span><Icon name="city" /></span>Machi Koro 2</a>
         <nav aria-label="Game settings">
+          {room && <button className="icon-button" aria-label="Copy invite link" title="Copy invite link" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(location.href);
+              setNotice('Invite link copied.');
+            } catch {
+              setNotice('Copy the invite link from your address bar.');
+            }
+          }}><Icon name="link" /></button>}
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setDark(value => !value)}><Icon name={dark ? 'sun' : 'moon'} /></button>
           <button className="icon-button" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'}
@@ -262,12 +277,13 @@ function App() {
         </nav>
       </div>
     </header>
-    {room ? <RoomView id={room} sound={sound} /> : <Home />}
+    {room ? <RoomView id={room} sound={sound} notice={notice} /> : <Home />}
     <dialog ref={rules} className="panel rules">
       <h2>How to play</h2>
       <p>Start with five coins and three rounds to buy establishments. You can build one establishment or pass each round.</p>
       <p>On your turn, roll one or two dice. Matching cards activate in order: red, blue and green, purple, then landmarks. You can then build one card or pass.</p>
       <p>Build three landmarks to win. The Launch Pad can also win the game through its card effect.</p>
+      <p><a href="https://www.dropbox.com/s/g6cfyld8i77djip/Machi%20Koro%202%20Rulebook.pdf?dl=0" target="_blank" rel="noreferrer">Official Machi Koro 2 rulebook</a></p>
       <form method="dialog"><button className="primary">Close</button></form>
     </dialog>
   </>;

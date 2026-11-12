@@ -11,7 +11,7 @@ export interface Player {
 }
 
 export interface OpeningState {
-  phase: 'opening' | 'roll' | 'build' | 'choice' | 'finished';
+  phase: 'opening' | 'roll' | 'resolve' | 'build' | 'choice' | 'finished';
   openingRound: number;
   startingSeat: number;
   activeSeat: number;

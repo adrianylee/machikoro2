@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameView } from '../game/view.ts';
+import type { TableControls, VoteKind } from '../worker/controls.ts';
 import type { MatchAction } from '../game/match.ts';
 
-type RoomAction = (MatchAction & { version: number }) | { type: 'chat'; text: string }
-  | { type: 'remove'; playerId: string } | { type: 'ready'; ready: boolean } | { type: 'start' } | { type: 'rematch'; version: number };
+export type RoomAction = (MatchAction & { version: number }) | { type: 'chat'; text: string }
+  | { type: 'remove'; playerId: string } | { type: 'start' } | { type: 'rematch'; version: number }
+  | { type: 'nudge' } | { type: 'vote-start'; kind: VoteKind } | { type: 'vote-cast'; voteId: number; yes: boolean };
 
 export interface Seat {
   id: string;
   name: string;
   online: boolean;
-  ready: boolean;
   color?: number;
 }
 
 export interface ChatMessage {
   id: string;
   playerId: string;
+  name?: string;
   text: string;
   timestamp: number;
 }
@@ -27,6 +29,7 @@ export interface Lobby {
   players: Seat[];
   chat: ChatMessage[];
   game?: GameView;
+  controls?: TableControls;
 }
 
 export const validRoom = /^[a-f0-9]{32}$/;

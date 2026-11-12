@@ -3,7 +3,7 @@ import type { Decision, Match } from '../game/match.ts';
 
 type Message = Record<string, unknown>;
 
-interface Seat { id: string; ready?: boolean }
+interface Seat { id: string }
 interface RoomGame { players: Seat[]; game: Match | null }
 
 function readDecision(value: unknown): Decision {
@@ -20,27 +20,21 @@ function readDecision(value: unknown): Decision {
   throw new RuleError('Invalid game choice.');
 }
 
-export function gameCommand(room: RoomGame, playerId: string, data: Message, random = Math.random) {
+export function gameCommand(room: RoomGame, playerId: string, data: Message, random = Math.random, delay = 0, connected?: ReadonlySet<string>) {
   const seat = room.players.find(player => player.id === playerId);
   if (!seat) throw new RuleError('This seat is no longer in the room.');
-  if (data.type === 'ready') {
-    if (room.game || typeof data.ready !== 'boolean') throw new RuleError('Ready status can only change in the lobby.');
-    if (seat.ready === data.ready) return false;
-    seat.ready = data.ready;
-    return true;
-  }
+  if (data.type === 'ready') return false;
   if (data.type === 'start' || data.type === 'rematch') {
     if (room.players[0] !== seat) throw new RuleError('Only the host can start a game.');
     if (data.type === 'start' && room.game) throw new RuleError('A game is already at this table.');
     if (data.type === 'rematch' && (room.game?.phase !== 'finished' || data.version !== room.game.version)) {
       throw new RuleError('Finish the current game before starting another.');
     }
-    if (room.players.length < 2) throw new RuleError('Invite at least one other player.');
-    if (!room.game && room.players.slice(1).some(player => !player.ready)) {
-      throw new RuleError('Wait for each guest to mark ready.');
-    }
+    const players = data.type === 'start' && connected ? room.players.filter(player => connected.has(player.id)) : room.players;
+    if (players.length < 2) throw new RuleError('Invite at least one other connected player.');
     const version = room.game ? room.game.version + 1 : 0;
-    room.game = startMatch(room.players.map(player => player.id), random);
+    room.game = startMatch(players.map(player => player.id), random);
+    room.players = players;
     room.game.version = version;
     return true;
   }
@@ -50,14 +44,19 @@ export function gameCommand(room: RoomGame, playerId: string, data: Message, ran
   switch (data.type) {
     case 'roll':
       if (data.dice !== 1 && data.dice !== 2) throw new RuleError('Choose one or two dice.');
-      applyMatchAction(room.game, playerId, { type: 'roll', dice: data.dice }, random);
+      const input = data.motion;
+      const component = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
+        ? Math.max(-1, Math.min(1, value)) : 0;
+      const motion = input && typeof input === 'object' && 'x' in input && 'y' in input
+        ? { x: component(input.x), y: component(input.y) } : undefined;
+      applyMatchAction(room.game, playerId, { type: 'roll', dice: data.dice, motion }, random, delay);
       break;
     case 'build':
       if (data.cardId !== null && typeof data.cardId !== 'string') throw new RuleError('Choose a card or pass.');
       applyMatchAction(room.game, playerId, { type: 'build', cardId: data.cardId }, random);
       break;
     case 'choose':
-      applyMatchAction(room.game, playerId, { type: 'choose', decision: readDecision(data.decision) }, random);
+      applyMatchAction(room.game, playerId, { type: 'choose', decision: readDecision(data.decision) }, random, delay);
       break;
     default:
       throw new RuleError('Unknown room command.');

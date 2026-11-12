@@ -26,7 +26,7 @@ export function addChat(room, playerId, text, timestamp) {
   if (last && timestamp - last.timestamp < 700) {
     throw new InputError('Wait a moment before sending another message.');
   }
-  room.chat.push({ id: crypto.randomUUID(), playerId, text: text.trim(), timestamp });
+  room.chat.push({ id: crypto.randomUUID(), playerId, name: room.players.find(player => player.id === playerId)?.name, text: text.trim(), timestamp });
   if (room.chat.length > CHAT_LIMIT) room.chat.shift();
 }
 
