@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { GameView, TableCity } from '../game/view.ts';
 import { Balance, Symbol } from './Cards.tsx';
 import type { SymbolName } from './Cards.tsx';
@@ -9,7 +10,7 @@ const honors: readonly [SymbolName, (stats: NonNullable<GameView['stats']>[strin
   ['clock', stats => stats?.thinking ?? 0],
   ['poke', stats => stats?.nudges ?? 0],
   ['chat', stats => stats?.chats ?? 0],
-  ['landmark', (_, city) => city.landmarks.length + city.establishments.reduce((sum, stack) => sum + stack.count, 0)],
+  ['buildings', (_, city) => city.landmarks.length + city.establishments.reduce((sum, stack) => sum + stack.count, 0)],
 ];
 
 function Confetti({ full = false }: { full?: boolean }) {
@@ -22,6 +23,8 @@ function Confetti({ full = false }: { full?: boolean }) {
 }
 
 export function Results({ game, self, online, rematch }: { game: GameView; self: string; online: boolean; rematch?: () => boolean }) {
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => { panel.current?.scrollIntoView({ block: 'start' }); }, []);
   const winner = game.cities.find(city => city.id === game.winner);
   function compare(a: TableCity, b: TableCity) {
     if (a.id === winner?.id) return -1;
@@ -34,7 +37,7 @@ export function Results({ game, self, online, rematch }: { game: GameView; self:
     return { icon, values, best: Math.max(...values) };
   });
   let rank = 0;
-  return <section className="panel results" aria-label="Game result">
+  return <section ref={panel} className="panel results" aria-label="Game result">
     {winner?.id === self && <Confetti full />}
     <h2>{winner ? <><Symbol name="trophy" /> {winner.name} wins!</> : 'Game drawn'}</h2>
     <ol>{cities.map((city, index) => {
@@ -42,7 +45,7 @@ export function Results({ game, self, online, rematch }: { game: GameView; self:
       return <li key={city.id} data-winner={city.id === winner?.id || undefined}>
         <span className="rank-number">{rank}.</span><span className="rank-name">{city.name}
           {awards.filter(award => award.best > 0 && award.values[index] === award.best).map(({ icon }) =>
-            <span key={icon} title={icon === 'landmark' ? 'Most establishments and landmarks' : undefined}><Symbol name={icon} /></span>)}
+            <Symbol key={icon} name={icon} />)}
           {city.id === winner?.id && <><Symbol name="trophy" /><Confetti /></>}
         </span><span>{city.landmarks.length} <Symbol name="landmark" /></span><Balance amount={city.coins} />
       </li>;

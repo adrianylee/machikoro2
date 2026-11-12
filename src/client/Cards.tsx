@@ -20,11 +20,12 @@ const paths = {
   clock: 'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Zm-10-5v6l4 2',
   poke: 'M4 12h12l-4-4m4 4-4 4m8-10v12',
   chat: 'M3 4h18v13H9l-6 4Zm4 5h10m-10 4h8',
+  buildings: 'M3 21h18M4 21V10l4-3 4 3v11m0-11 5-6 3 3v14M7 13h2m-2 4h2m7-5h2m-2 4h2',
   trophy: 'M7 3h10v8a5 5 0 0 1-10 0Zm0 2H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4m-5 4v5m-4 0h8',
 };
 
 export type SymbolName = keyof typeof paths;
-const labels: Record<SymbolName, string> = { cup: 'Restaurant', fruit: 'Fruit', gear: 'Industry', flower: 'Flower', grain: 'Wheat', shop: 'Shop', combo: 'Combo', major: 'Major establishment', landmark: 'Landmark', robber: 'Most coins stolen', bag: 'Most coins earned', clover: 'Highest average die', clock: 'Most time spent thinking', poke: 'Most nudges sent', chat: 'Most chat messages', trophy: 'Winner' };
+const labels: Record<SymbolName, string> = { cup: 'Restaurant', fruit: 'Fruit', gear: 'Industry', flower: 'Flower', grain: 'Wheat', shop: 'Shop', combo: 'Combo', major: 'Major establishment', landmark: 'Landmark', robber: 'Most coins stolen', bag: 'Most coins earned', clover: 'Highest average die', clock: 'Most time spent thinking', poke: 'Most nudges sent', chat: 'Most chat messages', buildings: 'Most establishments and landmarks', trophy: 'Winner' };
 
 export function Symbol({ name }: { name: SymbolName }) {
   return <svg className="card-symbol" data-symbol={name} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -48,10 +49,10 @@ export function Balance({ amount }: { amount: number }) {
   </span>;
 }
 
-const iconWords: Record<string, Icon | 'landmark'> = { grain: 'grain', fruit: 'fruit', flower: 'flower', gear: 'gear', shop: 'shop', restaurant: 'cup', major: 'major', combo: 'combo', landmark: 'landmark' };
+const iconWords: Record<string, Icon | 'landmark'> = { grain: 'grain', fruit: 'fruit', flower: 'flower', gear: 'gear', shop: 'shop', restaurant: 'cup', major: 'major', combo: 'combo', landmark: 'landmark', 'launch pad': 'landmark' };
 
 export function EffectText({ text }: { text: string }) {
-  const parts = text.split(/(\b\d+(?=\s+coins?\b)|\b(?:one|half)(?=\s+(?:extra\s+)?coins?\b)|\b(?:grain|fruit|flower|gear|shop|restaurant|major|combo)(?=\s+establishment)|\blandmarks?\b)/gi);
+  const parts = text.split(/(\b\d+(?=\s+(?:fewer\s+)?coins?\b)|\b(?:one|half)(?=\s+(?:extra\s+)?coins?\b)|\b(?:grain|fruit|flower|gear|shop|restaurant|major|combo)(?=\s+establishment)|\blandmarks?\b|\bLaunch Pad\b)/gi);
   return <>{parts.map((part, i) => {
     const name = iconWords[part.toLowerCase().replace(/^landmarks$/, 'landmark')];
     if (i % 2 && name) return <span className="effect-term" key={i}><Symbol name={name} /> {part}</span>;
@@ -74,7 +75,13 @@ function compactEffect(card: TableCard) {
     case 'equalize': return 'Build: split all coins evenly, rounding up.';
     case 'discount': return effect.global ? `Launch Pad costs everyone ${effect.coins} fewer coins.` : `Your landmarks cost ${effect.coins} fewer coins.`;
     case 'income-bonus': return `All players: +1 coin per activated ${effect.icon === 'cup' ? 'restaurant' : effect.icon} establishment.`;
-    default: return card.effect.replace(/^Any player who /, '').replace(/^When built, /, 'Build: ').replace(/^On your turn, /, '');
+    case 'pass-income': return `Anyone who passes earns ${effect.coins} coins.`;
+    case 'roll-income': return `Roll ${effect.total} to earn ${effect.coins} coins.`;
+    case 'doubles-turn': return 'Roll doubles to take another turn.';
+    case 'doubles-collection': return `Roll doubles to take ${effect.coins} coins from each rival.`;
+    case 'doubles-transfer': return 'Roll doubles and give a building to the player on your right.';
+    case 'no-income': return `Roll two dice with no income to earn ${effect.coins} coins.`;
+    default: return card.effect.replace(/^When built, /, 'Build: ').replace(/^On your turn, /, '');
   }
 }
 
