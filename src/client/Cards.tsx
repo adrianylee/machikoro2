@@ -143,7 +143,10 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
   function show() {
     clearTimeout(timeout.current);
     const rect = anchor.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect || rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) {
+      setPreview(undefined);
+      return;
+    }
     const width = Math.min(innerWidth - 20, mini ? 192 : Math.max(212, rect.width * 1.26));
     const half = width / 2;
     const left = Math.max(half + 10, Math.min(rect.left + rect.width / 2, innerWidth - half - 10));
