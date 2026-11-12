@@ -41,8 +41,8 @@ export function resolveVote(room: Room, connected: ReadonlySet<string>) {
   const threshold = Math.floor(electorate.length / 2) + 1;
   const yes = electorate.filter(player => vote.ballots[player.id] === true).length;
   const no = electorate.filter(player => vote.ballots[player.id] === false).length;
-  const passed = electorate.length >= 2 && yes >= threshold;
-  if (!passed && electorate.length >= 2 && no < threshold && yes + no !== electorate.length) return false;
+  const passed = yes >= threshold;
+  if (!passed && electorate.length > 0 && no < threshold && yes + no !== electorate.length) return false;
   delete controls.vote;
   const text = passed ? (vote.kind === 'draw' ? 'The table voted to draw.' : 'The table voted to skip the turn.')
     : 'The vote did not pass.';
@@ -68,7 +68,6 @@ export function controlsCommand(room: Room, playerId: string, data: Record<strin
   } else if (data.type === 'vote-start') {
     if (data.kind !== 'skip' && data.kind !== 'draw') throw new RuleError('Choose a vote.');
     if (controls.vote) throw new RuleError('A vote is already open.');
-    if (connected.size < 2) throw new RuleError('At least two players must be connected to vote.');
     controls.vote = { id: controls.revision + 1, kind: data.kind, initiator: playerId, target, ballots: { [playerId]: true }, turn };
   } else {
     if (!controls.vote || typeof data.yes !== 'boolean' || data.voteId !== controls.vote.id) {
