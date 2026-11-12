@@ -38,7 +38,7 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null) {
   useEffect(() => {
     const previous = heard.current;
     const previousNudge = nudged.current;
-    const nextNudge = nudge ? `${nudge.turn}:${nudge.count}` : '';
+    const nextNudge = nudge ? `${nudge.at ?? nudge.turn}:${nudge.count}` : '';
     heard.current = last;
     if (lobby) nudged.current = nextNudge;
     const context = audio.current;
@@ -60,7 +60,8 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null) {
       for (const [frequency, offset, length] of cues[sound]) {
         const note = context.createOscillator();
         const gain = context.createGain();
-        const start = context.currentTime + offset;
+        const stretch = sound === 'roll' ? (lobby?.game?.dicePresentation?.duration ?? 1650) / 1650 : 1;
+        const start = context.currentTime + offset * stretch;
         note.type = sound === 'roll' || sound === 'taken' ? 'triangle' : 'sine';
         note.frequency.value = frequency;
         gain.gain.setValueAtTime(.001, start);

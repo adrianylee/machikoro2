@@ -109,6 +109,7 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (action: RoomAction) =>
   const seen = useRef(latest);
   seen.current[tabs.indexOf(tab)] = latest[tabs.indexOf(tab)];
   const canControl = !!lobby.game && lobby.game.phase !== 'finished';
+  const activeName = lobby.players.find(seat => seat.id === lobby.game?.activePlayerId)?.name;
   useEffect(() => {
     const marker = lastMessage.current;
     if (marker?.parentElement) marker.parentElement.scrollTop = marker.parentElement.scrollHeight;
@@ -147,9 +148,8 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (action: RoomAction) =>
       }) : <p className="muted">Game events appear here after the game starts.</p>}
       <div ref={lastMessage} />
     </div> : <div className="activity-empty table-actions">
-      <button className="secondary" disabled={!canControl || lobby.game?.activePlayerId === lobby.self} onClick={() => send({ type: 'nudge' })}>Nudge{lobby.controls?.nudge && ` ×${lobby.controls.nudge.count}`}</button>
-      <button className="secondary" disabled={!canControl || !!lobby.controls?.vote} onClick={() => send({ type: 'vote-start', kind: 'skip' })}>Vote to skip turn</button>
-      <button className="secondary" disabled={!canControl || !!lobby.controls?.vote} onClick={() => send({ type: 'vote-start', kind: 'draw' })}>Vote to draw</button>
+      <button className="secondary" disabled={!canControl || !!lobby.controls?.vote} onClick={() => send({ type: 'vote-start', kind: 'skip' })}>Vote to skip {activeName ? `${activeName}’s turn` : 'turn'}</button>
+      <button className="secondary" disabled={!canControl || !!lobby.controls?.vote} onClick={() => send({ type: 'vote-start', kind: 'draw' })}>Vote to draw game</button>
       {lobby.controls?.result && <p className="muted">{lobby.controls.result.text}</p>}
     </div>}
   </section>;
@@ -163,6 +163,7 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
   const removal = useRef<HTMLDialogElement>(null);
   const [removeId, setRemoveId] = useState('');
   const { lobby, status, error, send } = useRoom(id, credentials);
+  const [viewing, setViewing] = useState<string>();
   useGameSound(sound, lobby);
 
   if (!lobby) return <main className="centered">
@@ -191,15 +192,18 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
   const canStart = status === 'online' && connected >= 2;
   const playerOrder = lobby.game?.turnOrder ?? lobby.players.map(seat => seat.id);
   const count = lobby.game ? lobby.players.length : connected;
+  const cityId = lobby.game?.cities.some(city => city.id === viewing) ? viewing! : lobby.self;
+  const active = lobby.players.find(seat => seat.id === lobby.game?.activePlayerId);
+  const nudge = lobby.controls?.nudge;
 
   return <main className="content-width room-view">
     <div className="phase-banner">
       <div><p className="eyebrow">Room {id.slice(0, 6).toUpperCase()} · {count} {count === 1 ? 'player' : 'players'}{!lobby.game && ' connected'}</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
     </div>
-    <p className="status-line" aria-live="polite">{notice || (status === 'online' ? 'Connected' : 'Reconnecting…')}</p>
+    {(notice || status !== 'online') && <p className="status-line" aria-live="polite">{notice || 'Reconnecting…'}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="table-grid">
-      {lobby.game ? <GameTable game={lobby.game} self={lobby.self} online={status === 'online'}
+      {lobby.game ? <GameTable game={lobby.game} self={lobby.self} cityId={cityId} online={status === 'online'}
         send={action => send({ ...action, version: lobby.game!.version })}
         rematch={host ? () => send({ type: 'rematch', version: lobby.game!.version }) : undefined} /> : <section className="panel room-stage">
         <img src="/art/radio-tower.webp" alt="" />
@@ -209,12 +213,17 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
       </section>}
       <aside className="table-sidebar">
         <section className="panel roster">
-          <h2>Players</h2>
+          <div className="roster-heading"><h2>Players</h2>
+            {active && lobby.game?.phase !== 'finished' && <button type="button" className="secondary roster-nudge"
+              disabled={active.id === lobby.self || status !== 'online'} onClick={() => send({ type: 'nudge' })}>
+              Nudge: {active.name}{nudge?.target === active.id && <span className="nudge-counter" aria-hidden="true" key={nudge.at ?? nudge.count}>×{nudge.count}</span>}
+            </button>}
+          </div>
           <ul>
             {playerOrder.map((id, index) => {
               const seat = lobby.players.find(player => player.id === id)!;
               const city = lobby.game?.cities.find(entry => entry.id === id);
-              return <li key={seat.id} data-active={lobby.game?.phase !== 'finished' && lobby.game?.activePlayerId === id || undefined}
+              return <li key={seat.id} data-motion-anchor={id === lobby.self && cityId !== lobby.self ? id : undefined} data-active={lobby.game?.phase !== 'finished' && lobby.game?.activePlayerId === id || undefined}
                 style={{ '--player-color': colors[seat.color ?? index] } as CSSProperties}>
               <span className="seat-number" aria-label={`Turn order ${index + 1}`}>{index + 1}</span>
               <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
@@ -227,6 +236,11 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
         </section>
         <References game={lobby.game} />
         <Activity lobby={lobby} send={send} />
+        {lobby.game && <div className="panel city-buttons" role="group" aria-label="View city">
+          <button type="button" className="secondary" aria-pressed={cityId === lobby.self} onClick={() => setViewing(lobby.self)}>Your city</button>
+          {lobby.game.cities.filter(city => city.id !== lobby.self).map(city => <button type="button" className="secondary" key={city.id}
+            aria-pressed={cityId === city.id} onClick={() => setViewing(city.id)}>View {city.name}</button>)}
+        </div>}
         <dialog ref={removal} className="panel rules" aria-label="Remove player">
           <h2>Remove {lobby.players.find(player => player.id === removeId)?.name ?? 'player'}?</h2>
           <form method="dialog" className="detail-buttons">
@@ -259,15 +273,15 @@ function App() {
     <header className="masthead">
       <div className="content-width header-inner">
         <a className="brand" href="/"><span><Icon name="city" /></span>Machi Koro 2</a>
-        <nav aria-label="Game settings">
-          {room && <button className="icon-button" aria-label="Copy invite link" title="Copy invite link" onClick={async () => {
+        {room && <button className="secondary copy-room" onClick={async () => {
             try {
-              await navigator.clipboard.writeText(location.href);
-              setNotice('Invite link copied.');
+              await navigator.clipboard.writeText(room);
+              setNotice('Room code copied.');
             } catch {
-              setNotice('Copy the invite link from your address bar.');
+              setNotice(`Room code: ${room}`);
             }
-          }}><Icon name="link" /></button>}
+          }}>Copy room code</button>}
+        <nav aria-label="Game settings">
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setDark(value => !value)}><Icon name={dark ? 'sun' : 'moon'} /></button>
           <button className="icon-button" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'}

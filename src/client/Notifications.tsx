@@ -28,7 +28,7 @@ export function Notifications({ lobby, send }: { lobby: Lobby; send: (action: Ro
   }, [latest, result?.revision, payments.length, !!result && result.at + 8000 > now]);
 
   useEffect(() => {
-    const next = nudge && `${nudge.turn}:${nudge.count}`;
+    const next = nudge && `${nudge.at ?? nudge.turn}:${nudge.count}`;
     if (nudged.current !== undefined && next && next !== nudged.current && nudge.target === lobby.self &&
       !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       document.querySelector('.room-view')?.animate([
@@ -50,7 +50,7 @@ export function Notifications({ lobby, send }: { lobby: Lobby; send: (action: Ro
       </div>
     </section>}
     {result && result.at + 8000 > now && <TimedNotice key={result.revision} at={result.at}>{result.text}</TimedNotice>}
-    {nudge?.target === lobby.self && <div className="panel notification nudge-notice" key={`${nudge.turn}:${nudge.count}`}>
+    {nudge?.target === lobby.self && <div className="panel notification nudge-notice" key={`${nudge.at ?? nudge.turn}:${nudge.count}`}>
       The table nudged you {nudge.count > 1 && <strong>×{nudge.count}</strong>}
     </div>}
     {payments.map(event => <TimedNotice key={event.id} at={event.payment!.at}>

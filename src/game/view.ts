@@ -1,7 +1,7 @@
 import { CARDS } from './catalog.ts';
 import type { Card, Icon } from './catalog.ts';
 import { buildOffer } from './match.ts';
-import type { Choice, GameEvent, Match, PlayerStats, ResolutionStage, ThrowMotion } from './match.ts';
+import type { Choice, GameEvent, Match, PlayerStats, ResolutionStage, ThrowMotion, DicePresentation } from './match.ts';
 import { visibleSupply } from './supply.ts';
 import type { Stack, VisibleSupply } from './supply.ts';
 
@@ -31,6 +31,8 @@ export interface GameView {
   openingRound: number;
   dice: number[] | null;
   rollVersion?: number;
+  dicePresentation?: DicePresentation;
+  diceSelection?: 1 | 2;
   dieColors?: ('pink' | 'green')[];
   throwMotion?: ThrowMotion;
   resolutionStage?: ResolutionStage | 'roll';
@@ -102,6 +104,7 @@ export function matchView(game: Match, seats: { id: string; name: string }[], vi
     dice: game.roll?.dice ?? null, rollVersion: game.rollVersion, turnStartedAt: game.turnStartedAt, supply, legalBuilds,
     version: game.version, choice: game.choice, winner: game.winner, events: game.events,
     dieColors: game.dieColors, throwMotion: game.throwMotion, resolutionStage: game.resolvingStep,
+    dicePresentation: game.dicePresentation, diceSelection: game.diceSelection,
     turnOrder: [...game.players.slice(game.startingSeat), ...game.players.slice(0, game.startingSeat)].map(player => player.id),
     stats: game.phase === 'finished' ? game.stats : undefined, drawn: game.drawn,
     cities: game.players.map(player => ({
