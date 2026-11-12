@@ -37,13 +37,8 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
         readStep();
       });
     }
-    const die = starting.getByRole('button', { name: 'Throw 1 die' });
-    await die.scrollIntoViewIfNeeded();
-    const box = (await die.boundingBox())!;
-    await starting.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await starting.mouse.down();
-    await starting.mouse.move(box.x + box.width / 2 + 95, box.y + box.height / 2 + 45, { steps: 8 });
-    await starting.mouse.up();
+    await starting.getByRole('button', { name: 'Click to throw die' }).click();
+    await expect(second.locator('.phase-banner').getByLabel('Elapsed turn time')).toBeVisible();
     await expect(second.getByRole('heading', { name: 'Build', exact: true })).toBeVisible({ timeout: 23_000 });
     if (process.env.MACHIKORO_TEST_URL) {
       await expect(reference).toHaveAttribute('data-observed-steps', 'roll,red,blue,green,purple,landmarks,allowance,build');
@@ -56,21 +51,25 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
     await expect(nudge.locator('.nudge-counter')).toHaveText('×1');
     await nudge.click();
     await expect(starting.getByText('The table nudged you')).toBeVisible();
-    await expect(starting.getByRole('complementary', { name: 'Table notifications' }).getByText('×2', { exact: true })).toBeVisible();
+    await expect(nudge.locator('.nudge-counter')).toHaveText('×2');
+    await expect(starting.locator('.nudge-counter')).toHaveCount(0);
     await second.getByRole('button', { name: 'Table Controls' }).click();
     await second.getByRole('button', { name: /^Vote to skip .+’s turn$/ }).click();
     await expect(starting.getByText('Skip turn vote', { exact: true })).toBeVisible();
     await expect(starting.getByRole('heading', { name: 'Build', exact: true })).toBeVisible();
     await starting.getByRole('button', { name: 'Yes', exact: true }).click();
-    await expect(second.getByRole('button', { name: 'Throw 1 die' })).toBeVisible();
+    await expect(second.getByRole('button', { name: 'Click to throw die' })).toBeVisible();
 
     await second.getByRole('button', { name: 'Vote to draw game' }).click();
     await starting.getByRole('button', { name: 'Yes', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Game drawn' })).toBeVisible();
     await expect(guest.getByRole('heading', { name: 'Game drawn' })).toBeVisible();
     await page.screenshot({ path: info.outputPath('draw-rankings.png') });
+    await guest.getByRole('button', { name: 'Play again' }).click();
+    await expect(guest.getByRole('button', { name: 'Waiting...' })).toBeDisabled();
+    await expect(page.getByRole('heading', { name: 'Game drawn' })).toBeVisible();
     await page.getByRole('button', { name: 'Play again' }).click();
-    await expect(guest.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
+    await expect(guest.getByRole('heading', { name: 'Lobby' })).toBeVisible();
   } finally {
     await guestContext.close();
   }

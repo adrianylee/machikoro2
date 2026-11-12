@@ -10,12 +10,18 @@ test('create a private room, join from a second browser, chat and recover the gu
   await expect(page.getByRole('heading', { name: 'Lobby' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start game' })).toBeDisabled();
   const invite = page.url();
-  expect(invite).toMatch(/\/room\/[a-f0-9]{32}$/);
+  expect(invite).toMatch(/\/room\/[a-z]{4}$/);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Copy invite link' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(invite);
 
   const phone = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   try {
     const guest = await phone.newPage();
-    await guest.goto(invite);
+    await guest.goto('/');
+    await guest.getByRole('button', { name: 'Join game', exact: true }).click();
+    await guest.getByLabel('Invite link or room code').fill(invite.split('/').at(-1)!.toUpperCase());
+    await guest.getByRole('button', { name: 'Join game', exact: true }).last().click();
     await guest.getByRole('textbox', { name: 'Display name' }).fill('Ren');
     await guest.getByRole('button', { name: 'Join game', exact: true }).click();
     await expect(page.getByText('Ren', { exact: true })).toBeVisible();

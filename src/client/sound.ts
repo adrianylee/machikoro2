@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { Lobby } from './room.ts';
 
+const celebrationFiles = ['/confetti-pop-sound-effect.mp3', '/confetti-pop.mp3'] as const;
+
 type Cue = 'roll' | 'income' | 'taken' | 'spent' | 'win' | 'nudge';
 const cues: Record<Cue, readonly [frequency: number, start: number, length: number][]> = {
   roll: [[210, 0, .07], [155, .20, .08], [230, .39, .06], [160, .75, .08], [260, 1.08, .06], [180, 1.34, .06]],
@@ -13,12 +15,15 @@ const cues: Record<Cue, readonly [frequency: number, start: number, length: numb
 
 export function useGameSound(enabled: boolean, lobby: Lobby | null) {
   const audio = useRef<AudioContext | null>(null);
+  const celebrationCursor = useRef<number | undefined>(undefined);
+  const clips = useRef(new Map<number, Promise<AudioBuffer>>());
   const heard = useRef<number | undefined>(undefined);
   const nudged = useRef<string | undefined>(undefined);
   const events = lobby?.game?.events;
   const last = events?.at(-1)?.id;
   const nudge = lobby?.controls?.nudge;
   const self = lobby?.self;
+  const celebrations = lobby?.controls?.celebrations;
   useEffect(() => {
     if (!enabled || !('AudioContext' in window)) return;
     function unlock() {
@@ -34,6 +39,33 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null) {
       audio.current = null;
     };
   }, [enabled]);
+
+  useEffect(() => {
+    const latest = celebrations?.at(-1)?.id ?? 0;
+    const previous = celebrationCursor.current;
+    if (lobby) celebrationCursor.current = latest;
+    const context = audio.current;
+    if (!enabled || !context || previous === undefined || !celebrations || latest <= previous) return;
+    for (const event of celebrations.filter(entry => entry.id > previous)) {
+      let clip = clips.current.get(event.sound);
+      if (!clip) {
+        clip = fetch(celebrationFiles[event.sound]).then(async response => {
+          if (!response.ok) throw new Error('Celebration sound unavailable.');
+          return context.decodeAudioData(await response.arrayBuffer());
+        });
+        clips.current.set(event.sound, clip);
+      }
+      void clip.then(buffer => {
+        if (audio.current !== context || context.state !== 'running') return;
+        const source = context.createBufferSource();
+        const gain = context.createGain();
+        source.buffer = buffer;
+        gain.gain.value = .2;
+        source.connect(gain).connect(context.destination);
+        source.start();
+      }).catch(() => clips.current.delete(event.sound));
+    }
+  }, [celebrations, enabled, lobby]);
 
   useEffect(() => {
     const previous = heard.current;

@@ -4,7 +4,7 @@ import type { Decision, Match } from '../game/match.ts';
 type Message = Record<string, unknown>;
 
 interface Seat { id: string }
-interface RoomGame { players: Seat[]; game: Match | null }
+interface RoomGame { players: Seat[]; game: Match | null; nextGameVersion?: number }
 
 function readDecision(value: unknown): Decision {
   if (value && typeof value === 'object' && 'kind' in value) {
@@ -24,15 +24,12 @@ export function gameCommand(room: RoomGame, playerId: string, data: Message, ran
   const seat = room.players.find(player => player.id === playerId);
   if (!seat) throw new RuleError('This seat is no longer in the room.');
   if (data.type === 'ready') return false;
-  if (data.type === 'start' || data.type === 'rematch') {
+  if (data.type === 'start') {
     if (room.players[0] !== seat) throw new RuleError('Only the host can start a game.');
-    if (data.type === 'start' && room.game) throw new RuleError('A game is already at this table.');
-    if (data.type === 'rematch' && (room.game?.phase !== 'finished' || data.version !== room.game.version)) {
-      throw new RuleError('Finish the current game before starting another.');
-    }
-    const players = data.type === 'start' && connected ? room.players.filter(player => connected.has(player.id)) : room.players;
+    if (room.game) throw new RuleError('A game is already at this table.');
+    const players = connected ? room.players.filter(player => connected.has(player.id)) : room.players;
     if (players.length < 2) throw new RuleError('Invite at least one other connected player.');
-    const version = room.game ? room.game.version + 1 : 0;
+    const version = room.nextGameVersion ?? 0;
     room.game = startMatch(players.map(player => player.id), random);
     room.players = players;
     room.game.version = version;

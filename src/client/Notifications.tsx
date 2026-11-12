@@ -51,7 +51,7 @@ export function Notifications({ lobby, send }: { lobby: Lobby; send: (action: Ro
     </section>}
     {result && result.at + 8000 > now && <TimedNotice key={result.revision} at={result.at}>{result.text}</TimedNotice>}
     {nudge?.target === lobby.self && <div className="panel notification nudge-notice" key={`${nudge.at ?? nudge.turn}:${nudge.count}`}>
-      The table nudged you {nudge.count > 1 && <strong>×{nudge.count}</strong>}
+      The table nudged you
     </div>}
     {payments.map(event => <TimedNotice key={event.id} at={event.payment!.at}>
       <strong>{names.get(event.playerId) ?? 'A player'}</strong> triggered <strong>{event.payment!.source}</strong> and took <Coin value={event.payment!.amount} /> {event.payment!.amount === 1 ? 'coin' : 'coins'} from you!

@@ -34,6 +34,10 @@ test('table presents market, cities and readable card details on desktop and a p
   const details = page.getByRole('region', { name: 'Bakery details' });
   await expect(details.getByText('Activates on 2 or 3')).toBeVisible();
   await expect(details.getByRole('button', { name: 'Buy Bakery for 1 coin' })).toBeEnabled();
+  await page.screenshot({ path: info.outputPath('expanded-card.png') });
+  await market.getByRole('group', { name: 'Wheat Field', exact: true }).hover();
+  await expect(page.getByRole('region', { name: 'Wheat Field details' })).toBeVisible();
+  await expect(details).toBeHidden();
   await page.keyboard.press('Escape');
   await market.getByRole('group', { name: 'Radio Tower, unaffordable' }).hover();
   const landmark = page.getByRole('region', { name: 'Radio Tower details' });

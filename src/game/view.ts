@@ -41,6 +41,7 @@ export interface GameView {
   stats?: Record<string, PlayerStats>;
   drawn?: boolean;
   turnStartedAt?: number;
+  turnBeganAt?: number;
   supply: VisibleSupply;
   cities: TableCity[];
   legalBuilds: Record<string, { cost: number; blocked?: string }>;
@@ -102,7 +103,7 @@ export function matchView(game: Match, seats: { id: string; name: string }[], vi
     [id, buildOffer(game, viewer, CARDS[id])] as const)));
   return {
     phase: game.phase, activePlayerId: active.id, openingRound: game.openingRound,
-    dice: game.roll?.dice ?? null, rollVersion: game.rollVersion, turnStartedAt: game.turnStartedAt, supply, legalBuilds,
+    dice: game.roll?.dice ?? null, rollVersion: game.rollVersion, turnStartedAt: game.turnStartedAt, turnBeganAt: game.turnBeganAt, supply, legalBuilds,
     version: game.version, choice: game.choice, winner: game.winner, events: game.events,
     dieColors: game.dieColors, throwMotion: game.throwMotion, resolutionStage: game.resolvingStep,
     dicePresentation: game.dicePresentation, diceSelection: game.diceSelection, serverNow: Date.now(),

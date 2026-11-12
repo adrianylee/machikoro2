@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useGameSound } from './sound.ts';
-import { createRoom, newCredential, recentRoom, savedSeat, useRoom, validRoom } from './room.ts';
+import { createRoom, newCredential, recentRoom, roomPath, savedSeat, useRoom, validRoom } from './room.ts';
 import type { Lobby, RoomAction } from './room.ts';
-import { GameTable, tablePhase } from './GameTable.tsx';
+import { GameTable, tablePhase, TurnClock } from './GameTable.tsx';
 import { Notifications } from './Notifications.tsx';
 import { References } from './References.tsx';
 import { Balance } from './Cards.tsx';
@@ -15,11 +15,11 @@ import './style.css';
 const colors = ['#af492d', '#25725e', '#7a4f9f', '#275f9c', '#94601d'];
 
 function roomFrom(value: string) {
-  const trimmed = value.trim();
+  const trimmed = value.trim().toLowerCase();
   if (validRoom.test(trimmed)) return trimmed;
   try {
     const url = new URL(trimmed);
-    return /^\/room\/([a-f0-9]{32})\/?$/.exec(url.pathname)?.[1] ?? '';
+    return roomPath.exec(url.pathname)?.[1]?.toLowerCase() ?? '';
   } catch {
     return '';
   }
@@ -164,6 +164,7 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
   const [removeId, setRemoveId] = useState('');
   const { lobby, status, error, send } = useRoom(id, credentials);
   const [viewing, setViewing] = useState<string>();
+  const [nudge, setNudge] = useState<{ target: string; at: number; count: number }>();
   useGameSound(sound, lobby);
 
   if (!lobby) return <main className="centered">
@@ -194,18 +195,26 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
   const count = lobby.game ? lobby.players.length : connected;
   const cityId = lobby.game?.cities.some(city => city.id === viewing) ? viewing! : lobby.self;
   const active = lobby.players.find(seat => seat.id === lobby.game?.activePlayerId);
-  const nudge = lobby.controls?.nudge;
+  const turnStart = lobby.game?.turnBeganAt ?? lobby.game?.turnStartedAt;
+  function sendNudge(target: string) {
+    if (!send({ type: 'nudge' })) return;
+    const at = performance.now();
+    setNudge(previous => ({ target, at, count: previous?.target === target && at - previous.at < 2000 ? previous.count + 1 : 1 }));
+  }
 
   return <main className="content-width room-view">
     <div className="phase-banner">
-      <div><p className="eyebrow">Room {id.slice(0, 6).toUpperCase()} · {count} {count === 1 ? 'player' : 'players'}{!lobby.game && ' connected'}</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
+      <div><p className="eyebrow">{count} {count === 1 ? 'player' : 'players'}{!lobby.game && ' connected'}</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
+      {turnStart && lobby.game?.phase !== 'finished' && <TurnClock start={turnStart} serverNow={lobby.game?.serverNow} />}
     </div>
     {(notice || status !== 'online') && <p className="status-line" aria-live="polite">{notice || 'Reconnecting…'}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="table-grid">
       {lobby.game ? <GameTable game={lobby.game} self={lobby.self} cityId={cityId} online={status === 'online'}
         send={action => send({ ...action, version: lobby.game!.version })}
-        rematch={host ? () => send({ type: 'rematch', version: lobby.game!.version }) : undefined} /> : <section className="panel room-stage">
+        controls={lobby.controls}
+        rematch={() => send({ type: 'rematch', version: lobby.game!.version })}
+        congratulate={() => send({ type: 'congratulate', version: lobby.game!.version })} /> : <section className="panel room-stage">
         <img src="/art/radio-tower.webp" alt="" />
         <div><h2>Gather your players</h2><p>{host ? 'Invite friends and start with 2–5 connected players.' : 'The host will start when the group is here.'}</p>
           {host && <button className="primary lobby-action" disabled={!canStart} onClick={() => send({ type: 'start' })}>Start game</button>}
@@ -215,8 +224,8 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
         <section className="panel roster">
           <div className="roster-heading"><h2>Players</h2>
             {active && lobby.game?.phase !== 'finished' && <button type="button" className="secondary roster-nudge"
-              disabled={active.id === lobby.self || status !== 'online'} onClick={() => send({ type: 'nudge' })}>
-              Nudge: {active.name}{nudge?.target === active.id && <span className="nudge-counter" aria-hidden="true" key={nudge.at ?? nudge.count}>×{nudge.count}</span>}
+              disabled={active.id === lobby.self || status !== 'online'} onClick={() => sendNudge(active.id)}>
+              Nudge: {active.name}{nudge?.target === active.id && <span className="nudge-counter" aria-hidden="true" key={nudge.at}>×{nudge.count}</span>}
             </button>}
           </div>
           <ul>
@@ -227,8 +236,8 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
                 style={{ '--player-color': colors[seat.color ?? index] } as CSSProperties}>
               <span className="seat-number" aria-label={`Turn order ${index + 1}`}>{index + 1}</span>
               <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
-              {city && <div className="roster-stats"><Balance amount={city.coins} /> <span>{city.landmarks.length}/3</span></div>}
               <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}</span>
+              {city && <div className="roster-stats"><Balance amount={city.coins} /> <span>{city.landmarks.length}/3</span></div>}
               {host && !lobby.game && seat.id !== lobby.self && <button className="remove-seat" type="button"
                 aria-label={`Remove ${seat.name}`} onClick={() => { setRemoveId(seat.id); removal.current?.showModal(); }}>Remove</button>}
             </li>; })}
@@ -262,7 +271,7 @@ function App() {
   const [sound, setSound] = useState(() => localStorage.getItem('machi-sound') !== 'off');
   const rules = useRef<HTMLDialogElement>(null);
   const [notice, setNotice] = useState('');
-  const room = /^\/room\/([a-f0-9]{32})\/?$/.exec(location.pathname)?.[1];
+  const room = roomPath.exec(location.pathname)?.[1]?.toLowerCase();
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     localStorage.setItem('machi-theme', dark ? 'dark' : 'light');
@@ -273,14 +282,14 @@ function App() {
     <header className="masthead">
       <div className="content-width header-inner">
         <a className="brand" href="/"><span><Icon name="city" /></span>Machi Koro 2</a>
-        {room && <button className="secondary copy-room" onClick={async () => {
+        {room && <div className="room-invite"><button className="secondary copy-room" onClick={async () => {
             try {
-              await navigator.clipboard.writeText(room);
-              setNotice('Room code copied.');
+              await navigator.clipboard.writeText(new URL(`/room/${room}`, location.origin).href);
+              setNotice('Invite link copied.');
             } catch {
-              setNotice(`Room code: ${room}`);
+              setNotice(`Copy the invite link from your address bar.`);
             }
-          }}>Copy room code</button>}
+          }}>Copy invite link</button><span className="room-code" title={room.toUpperCase()}>{room.toUpperCase()}</span></div>}
         <nav aria-label="Game settings">
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setDark(value => !value)}><Icon name={dark ? 'sun' : 'moon'} /></button>

@@ -3,9 +3,10 @@ import type { MatchAction } from '../game/match.ts';
 import { TABLE_CARDS } from '../game/view.ts';
 import type { GameView } from '../game/view.ts';
 import { EffectChoice } from './EffectChoice.tsx';
-import { Balance, CardTile, CitySummary } from './Cards.tsx';
+import { Balance, CardTile, CitySummary, Symbol } from './Cards.tsx';
 import { DiceBoard, DiceTray } from './Dice.tsx';
 import { Results } from './Results.tsx';
+import type { TableControls } from '../worker/controls.ts';
 import { TableMotion } from './TableMotion.tsx';
 
 const rows = [
@@ -25,25 +26,28 @@ export function tablePhase(game: GameView) {
   }
 }
 
-function TurnClock({ start }: { start: number }) {
-  const elapsed = () => Math.max(0, Math.floor((Date.now() - start) / 1000));
-  const [seconds, setSeconds] = useState(elapsed);
+export function TurnClock({ start, serverNow }: { start: number; serverNow?: number }) {
+  const [seconds, setSeconds] = useState(() => Math.max(0, Math.floor(((serverNow ?? Date.now()) - start) / 1000)));
   useEffect(() => {
-    const update = () => setSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    const age = Math.max(0, (serverNow ?? Date.now()) - start);
+    const receivedAt = performance.now();
+    const update = () => setSeconds(Math.floor((age + performance.now() - receivedAt) / 1000));
     update();
-    const interval = window.setInterval(update, 1000);
+    const interval = window.setInterval(update, 250);
     return () => window.clearInterval(interval);
-  }, [start]);
-  return <time className="muted turn-clock" aria-label="Elapsed turn time">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</time>;
+  }, [start, serverNow]);
+  return <time className="turn-clock" aria-label="Elapsed turn time">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</time>;
 }
 
-export function GameTable({ game, self, cityId, online, send, rematch }: {
+export function GameTable({ game, self, cityId, online, send, rematch, congratulate, controls }: {
   game: GameView;
   self: string;
   cityId: string;
   online: boolean;
   send: (action: MatchAction | { type: 'dice-select'; dice: 1 | 2 }) => boolean;
-  rematch?: () => boolean;
+  rematch: () => boolean;
+  congratulate: () => boolean;
+  controls?: TableControls;
 }) {
   const cityRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -67,20 +71,20 @@ export function GameTable({ game, self, cityId, online, send, rematch }: {
   const canBuild = online && isActive && (game.phase === 'opening' || game.phase === 'build');
 
   return <div className="game-stage">
-    {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} /> : <section className="panel turn-controls" aria-label="Turn controls">
+    {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} congratulate={congratulate} controls={controls} /> : <section className="panel turn-controls" aria-label="Turn controls">
       <div>
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
         {canBuild && <p className="muted">{game.phase === 'opening' ? 'Build an establishment or pass.' : 'Build one card or pass.'}</p>}
       </div>
-      {game.turnStartedAt && <TurnClock start={game.turnStartedAt} />}
       {game.dice && game.phase !== 'roll' && game.resolutionStage !== 'roll' && <span className="roll-total">Rolled {game.dice.join(' + ')}{game.dice.length === 2 && ` = ${game.dice[0] + game.dice[1]}`}</span>}
       {online && isActive && game.phase === 'roll' && <DiceTray selected={game.diceSelection} onSelect={dice => send({ type: 'dice-select', dice })}
-        onThrow={(dice, motion) => send({ type: 'roll', dice, motion })} />}
+        onThrow={dice => send({ type: 'roll', dice })} />}
       {canBuild && <button className="secondary" onClick={() => send({ type: 'build', cardId: null })}>Pass</button>}
     </section>}
     {isActive && game.choice && <EffectChoice key={game.version} game={game} self={self} disabled={!online}
       choose={decision => send({ type: 'choose', decision })} />}
     <div className="market-neighborhood">
+      <div className="market-side">
       <aside className="panel neighbors" aria-label="Opponents’ cities">
         {game.cities.filter(entry => entry.id !== self).map(entry => <section key={entry.id} data-motion-anchor={entry.id}>
           <h3>{entry.name}</h3><Balance amount={entry.coins} />
@@ -91,6 +95,10 @@ export function GameTable({ game, self, cityId, online, send, rematch }: {
           </div>
         </section>)}
       </aside>
+      <section className="panel table-bank" aria-label="Bank" data-motion-anchor="bank">
+        <h2>Bank</h2><div className="bank-card"><img src="/table-bank.webp" alt="" /><Symbol name="bag" /></div>
+      </section>
+      </div>
     <section className="panel market" aria-label="Market">
       <h2>Market</h2>
       {rows.map(([key, label]) => <section className="market-row" key={key}>
@@ -107,9 +115,6 @@ export function GameTable({ game, self, cityId, online, send, rematch }: {
       <DiceBoard game={game} />
     </section>
     </div>
-    <section className="panel table-bank" aria-label="Bank" data-motion-anchor="bank">
-      <img src="/table-bank.webp" alt="" /><h2>Bank</h2>
-    </section>
     {city && <section className="panel city" aria-label="Player city">
       <div className="city-heading">
         <div><h2>{city.id === self ? 'Your city' : `${city.name}’s city`}</h2>
