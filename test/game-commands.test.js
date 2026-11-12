@@ -8,19 +8,19 @@ const roomWithGuests = () => ({
   game: null,
 });
 
-test('start requires the host and a ready guest', () => {
+test('start includes only connected players and requires at least two', () => {
   const room = roomWithGuests();
   assert.throws(() => gameCommand(room, 'b', { type: 'start' }), /Only the host/);
-  assert.throws(() => gameCommand(room, 'a', { type: 'start' }), /mark ready/);
-  assert.equal(gameCommand(room, 'b', { type: 'ready', ready: true }), true);
-  assert.equal(gameCommand(room, 'b', { type: 'ready', ready: true }), false);
-  gameCommand(room, 'a', { type: 'start' }, () => 0);
+  room.players.push({ id: 'c', name: 'Away' });
+  assert.throws(() => gameCommand(room, 'a', { type: 'start' }, () => 0, 0, new Set(['a'])), /connected player/);
+  gameCommand(room, 'a', { type: 'start' }, () => 0, 0, new Set(['a', 'b']));
+  assert.deepEqual(room.game.players.map(player => player.id), ['a', 'b']);
+  assert.deepEqual(room.players.map(player => player.id), ['a', 'b']);
   assert.throws(() => gameCommand(room, 'a', { type: 'start' }), /already/);
 });
 
 test('commands enforce the active seat and reject retries before mutating the game', () => {
   const room = roomWithGuests();
-  gameCommand(room, 'b', { type: 'ready', ready: true });
   gameCommand(room, 'a', { type: 'start' }, () => 0);
   const command = { type: 'build', cardId: null, version: 0 };
   assert.throws(() => gameCommand(room, 'b', command), /Wait/);
@@ -36,7 +36,6 @@ test('commands enforce the active seat and reject retries before mutating the ga
 
 test('rematch requires a completed version and invalidates commands from the last game', () => {
   const room = roomWithGuests();
-  gameCommand(room, 'b', { type: 'ready', ready: true });
   gameCommand(room, 'a', { type: 'start' }, () => 0);
   assert.throws(() => gameCommand(room, 'a', { type: 'rematch', version: 0 }), /Finish/);
   room.game.phase = 'finished';

@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { gameCommand } from './game-commands.ts';
-import { RuleError } from '../game/match.ts';
+import { advanceResolution, playerStats, RuleError } from '../game/match.ts';
+import { controlsCommand, resolveVote, syncControls } from './controls.ts';
 import { matchView } from '../game/view.ts';
 import { addChat, joinRoom, publicLobby, removeSeat } from './lobby.js';
 import { makeRoomPassword, verifyRoomPassword } from './password.ts';
@@ -110,18 +111,26 @@ export class Room extends DurableObject {
 
       const room = storage.get('room');
       if (!room) throw new InputError('This room has expired.');
+      if (!room.players.some(player => player.id === playerId)) throw new InputError('This seat is no longer in the room.');
+      const online = this.onlinePlayers();
+      const oldResolution = room.game?.resolution;
       if (data.type === 'remove') {
         removeSeat(room, playerId, data.playerId);
         for (const connection of this.ctx.getWebSockets()) {
           if (connection.deserializeAttachment() === data.playerId) connection.close(4003, 'The host removed your seat.');
         }
       } else if (data.type === 'chat') {
-        if (!room.players.some(player => player.id === playerId)) throw new InputError('This seat is no longer in the room.');
         addChat(room, playerId, data.text, Date.now());
-      } else if (!gameCommand(room, playerId, data)) {
+        if (room.game && room.game.phase !== 'finished') playerStats(room.game, playerId).chats++;
+      } else if (data.type === 'nudge' || data.type === 'vote-start' || data.type === 'vote-cast') {
+        controlsCommand(room, playerId, data, online);
+      } else if (!gameCommand(room, playerId, data, Math.random, this.resolutionDelay(), online)) {
         return;
       }
+      if (data.type === 'rematch') delete room.controls;
+      syncControls(room);
       this.save(room);
+      if (oldResolution !== room.game?.resolution) await this.scheduleAlarm(room);
       this.broadcast(room);
     } catch (error) {
       if (!(error instanceof InputError) && !(error instanceof RuleError)) throw error;
@@ -137,22 +146,47 @@ export class Room extends DurableObject {
     this.ctx.storage.kv.put('room', room);
   }
 
+  resolutionDelay() {
+    return this.env.FAST_TEST_RESOLUTION === '1' ? 20 : 2000;
+  }
+
+  scheduleAlarm(room) {
+    return this.ctx.storage.setAlarm(Math.min(
+      room.lastActivity + ROOM_LIFETIME, room.game?.phase === 'resolve' ? room.game.resolution.at : Infinity,
+    ));
+  }
+
   async alarm() {
     const room = this.ctx.storage.kv.get('room');
     if (!room) return;
-    const expires = room.lastActivity + ROOM_LIFETIME;
-    if (expires > Date.now()) {
-      await this.ctx.storage.setAlarm(expires);
+    if (room.lastActivity + ROOM_LIFETIME <= Date.now()) {
+      this.ctx.storage.kv.delete('room');
+      for (const socket of this.ctx.getWebSockets()) socket.close(4004, 'This room has expired.');
       return;
     }
-    this.ctx.storage.kv.delete('room');
-    for (const socket of this.ctx.getWebSockets()) socket.close(4004, 'This room has expired.');
+    if (room.game && advanceResolution(room.game, this.resolutionDelay())) {
+      this.ctx.storage.kv.put('room', room);
+      this.broadcast(room);
+    }
+    await this.scheduleAlarm(room);
   }
 
-  webSocketClose(socket) {
-    if (socket.deserializeAttachment()) {
-      this.broadcast(this.ctx.storage.kv.get('room'), socket);
+  onlinePlayers(closedSocket) {
+    return new Set(this.ctx.getWebSockets().flatMap(socket => {
+      const id = socket.deserializeAttachment();
+      return id && socket !== closedSocket && socket.readyState === WebSocket.OPEN ? [id] : [];
+    }));
+  }
+
+  async webSocketClose(socket) {
+    if (!socket.deserializeAttachment()) return;
+    const room = this.ctx.storage.kv.get('room');
+    if (!room) return;
+    if (resolveVote(room, this.onlinePlayers(socket))) {
+      this.save(room);
+      await this.scheduleAlarm(room);
     }
+    this.broadcast(room, socket);
   }
 
   broadcast(room, closedSocket) {
@@ -164,9 +198,10 @@ export class Room extends DurableObject {
         : [];
     });
     const lobby = publicLobby(room, new Set(connections.map(({ id }) => id)));
-    const game = room.game ? matchView(room.game, room.players) : undefined;
+    const views = new Map();
     for (const { socket, id } of connections) {
-      socket.send(JSON.stringify({ type: 'room', self: id, ...lobby, game }));
+      if (room.game && !views.has(id)) views.set(id, matchView(room.game, room.players, id));
+      socket.send(JSON.stringify({ type: 'room', self: id, ...lobby, game: views.get(id), controls: room.controls }));
     }
   }
 }
