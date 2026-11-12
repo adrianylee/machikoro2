@@ -11,14 +11,14 @@ export function MarketSidebar({ game, self, colors }: { game: GameView; self: st
   const list = useRef<HTMLOListElement>(null);
   const layout = useRef({ order: '', positions: new Map<string, number>() });
   const ranked = [...game.cities].sort(compareStanding);
-  const order = ranked.filter(city => city.id !== self).map(city => city.id).join(',');
+  const order = ranked.map(city => city.id).join(',');
   useLayoutEffect(() => {
     const previous = layout.current.positions;
     const reordered = order !== layout.current.order;
     const current = new Map<string, number>();
     const animate = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-    for (const row of list.current?.querySelectorAll<HTMLLIElement>('[data-motion-anchor]') ?? []) {
-      const id = row.dataset.motionAnchor!;
+    for (const row of list.current?.querySelectorAll<HTMLLIElement>('[data-standing-player]') ?? []) {
+      const id = row.dataset.standingPlayer!;
       const top = row.offsetTop;
       current.set(id, top);
       const old = previous.get(id);
@@ -37,9 +37,9 @@ export function MarketSidebar({ game, self, colors }: { game: GameView; self: st
       <ol ref={list}>
         {ranked.map((city, index) => {
           if (!index || compareStanding(ranked[index - 1], city)) rank = index + 1;
-          if (city.id === self) return null;
-          return <li key={city.id} data-motion-anchor={city.id} style={{ '--player-color': colors[city.id] } as CSSProperties}>
-            <h3><span className="muted">{rank}.</span> {city.name}</h3>
+          return <li key={city.id} data-standing-player={city.id} data-motion-anchor={city.id === self ? undefined : city.id}
+            style={{ '--player-color': colors[city.id] } as CSSProperties}>
+            <h3><span className="muted">{rank}.</span> {city.name}{city.id === self && ' (you)'}</h3>
             <div className="leaderboard-assets"><Balance amount={city.coins} />
               <span aria-label={`${city.landmarks.length} of 3 landmarks`}><Symbol name="landmark" /> {city.landmarks.length}/3</span></div>
             <div className="mini-cards">

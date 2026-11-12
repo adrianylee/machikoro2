@@ -122,6 +122,15 @@ export function CityFilters({ current, select }: { current?: CityFilter; select:
   </div>;
 }
 
+function CardMeta({ card, count, cost }: { card: TableCard; count: number; cost?: number }) {
+  return <span className="card-meta">
+    {card.numbers.length > 0 ? <span className="activation">{card.numbers.join(' · ')}</span> :
+      card.persistent && <span className="activation" role="img" aria-label="Persistent effect">∞</span>}
+    {count > 1 && <span className="card-count">×{count}</span>}
+    {cost !== undefined && <Coin value={cost} />}
+  </span>;
+}
+
 export function CardTile({ card, count, cost, blocked, unaffordable, mini, inline, ownerName, buy }: {
   card: TableCard; count: number; cost?: number; blocked?: string;
   unaffordable?: boolean; mini?: boolean; inline?: boolean; ownerName?: string; buy?: () => boolean;
@@ -216,10 +225,7 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
       {ownerName ? <><BuildingArt source={card.art} /><span aria-hidden="true">∞</span></> : mini ? <>{card.numbers.length > 0 && <span>{card.numbers.join('–')}</span>}<Symbol name={card.icon ?? 'landmark'} />
         {count > 1 && <small>×{count}</small>}</> : <>
         <span className="card-picture">
-          <span className="card-meta"><span className="activation">{card.numbers.length ? card.numbers.join(' · ') : <span role="img" aria-label={card.persistent ? 'Persistent effect' : 'Single use on purchase'}>{card.persistent ? '∞' : '1'}</span>}</span>
-            {count > 1 && <span className="card-count">×{count}</span>}
-            <Coin value={cost ?? card.prices[0]} />
-          </span>
+          <CardMeta card={card} count={count} cost={cost ?? card.prices[0]} />
           <BuildingArt source={card.art} />
         </span>
         <CardSummary card={card} compact={!inline} />
@@ -231,6 +237,7 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
       role="region" aria-label={`${card.name} details`} aria-hidden={preview.closing || undefined}
       onAnimationEnd={() => { if (preview.closing) setPreview(undefined); }}>
       {mini ? <CardSummary card={card} /> : <>
+        <CardMeta card={card} count={count} cost={ownerName ? undefined : cost ?? card.prices[0]} />
         <BuildingArt source={card.art} /><strong>{card.name} <Symbol name={card.icon ?? 'landmark'} /></strong>
         {ownerName && <p className="modifier-owner">Owned by {ownerName}</p>}
         <CardInformation card={card} />
