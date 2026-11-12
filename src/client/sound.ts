@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { RefObject } from 'react';
 import type { Lobby } from './room.ts';
 
 const celebrationFiles = ['/confetti-pop-sound-effect.mp3', '/confetti-pop.mp3'] as const;
@@ -13,22 +14,20 @@ const cues: Record<Cue, readonly [frequency: number, start: number, length: numb
   nudge: [[240, 0, .08], [320, .07, .08]],
 };
 
-export function useGameSound(enabled: boolean, lobby: Lobby | null) {
+type AudioRef = RefObject<AudioContext | null>;
+
+function audioContext(audio: AudioRef) {
+  if (!('AudioContext' in window)) return null;
+  return audio.current ??= new AudioContext();
+}
+
+export function useAudio(enabled: boolean) {
   const audio = useRef<AudioContext | null>(null);
-  const celebrationCursor = useRef<number | undefined>(undefined);
-  const clips = useRef(new Map<number, Promise<AudioBuffer>>());
-  const heard = useRef<number | undefined>(undefined);
-  const nudged = useRef<string | undefined>(undefined);
-  const events = lobby?.game?.events;
-  const last = events?.at(-1)?.id;
-  const nudge = lobby?.controls?.nudge;
-  const self = lobby?.self;
-  const celebrations = lobby?.controls?.celebrations;
   useEffect(() => {
-    if (!enabled || !('AudioContext' in window)) return;
+    if (!enabled) return;
     function unlock() {
-      audio.current ??= new AudioContext();
-      if (audio.current.state === 'suspended') void audio.current.resume().catch(() => {});
+      const context = audioContext(audio);
+      if (context?.state === 'suspended') void context.resume().catch(() => {});
     }
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -39,7 +38,63 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null) {
       audio.current = null;
     };
   }, [enabled]);
+  return audio;
+}
 
+export function useButtonFeedback(enabled: boolean, audio: AudioRef) {
+  useEffect(() => {
+    const animations = new WeakMap<HTMLElement, Animation>();
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    function feedback(event: MouseEvent) {
+      if (!event.isTrusted || !(event.target instanceof Element)) return;
+      const control = event.target.closest<HTMLElement>('button, a.icon-button, summary');
+      if (!control || control.matches(':disabled, [aria-disabled="true"]')) return;
+      if (!reduced.matches) {
+        const nudge = control.classList.contains('roster-nudge');
+        animations.get(control)?.cancel();
+        animations.set(control, control.animate([
+          { transform: 'scale(1)' }, { transform: nudge ? 'scale(.9)' : 'scale(.96)', offset: .25 },
+          { transform: nudge ? 'scale(1.07)' : 'scale(1.015)', offset: .62 }, { transform: 'scale(1)' },
+        ], { duration: nudge ? 260 : 180, easing: 'ease-out' }));
+      }
+      const toggle = control.dataset.soundToggle;
+      if (!(toggle ? toggle === 'on' : enabled)) return;
+      const context = audioContext(audio);
+      if (!context) return;
+      function clickSound() {
+        if (!context || context !== audio.current || context.state !== 'running') return;
+        const at = context.currentTime;
+        const note = context.createOscillator();
+        const gain = context.createGain();
+        note.type = 'sine';
+        note.frequency.setValueAtTime(630, at);
+        note.frequency.exponentialRampToValueAtTime(320, at + .055);
+        gain.gain.setValueAtTime(.001, at);
+        gain.gain.exponentialRampToValueAtTime(.042, at + .005);
+        gain.gain.exponentialRampToValueAtTime(.001, at + .055);
+        note.connect(gain).connect(context.destination);
+        note.start(at);
+        note.stop(at + .055);
+      }
+      if (context.state === 'running') clickSound();
+      else void context.resume().then(clickSound).catch(() => {});
+    }
+    // Capture covers keyboard activation and controls inside React portals and dialogs.
+    document.addEventListener('click', feedback, true);
+    return () => document.removeEventListener('click', feedback, true);
+  }, [enabled, audio]);
+}
+
+export function useGameSound(enabled: boolean, lobby: Lobby | null, audio: AudioRef) {
+  const celebrationCursor = useRef<number | undefined>(undefined);
+  const clips = useRef(new Map<number, Promise<AudioBuffer>>());
+  const heard = useRef<number | undefined>(undefined);
+  const nudged = useRef<string | undefined>(undefined);
+  const events = lobby?.game?.events;
+  const last = events?.at(-1)?.id;
+  const nudge = lobby?.controls?.nudge;
+  const self = lobby?.self;
+  const celebrations = lobby?.controls?.celebrations;
   useEffect(() => {
     const latest = celebrations?.at(-1)?.id ?? 0;
     const previous = celebrationCursor.current;
