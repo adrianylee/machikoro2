@@ -1,6 +1,6 @@
 # Machi Koro 2
 
-A private multiplayer table for the 2021 Pandasaurus edition. The base-game catalog and authoritative rules run in the local Cloudflare Worker. The game is under development while the artwork, room controls, and production verification are completed.
+A private multiplayer table for the 2021 Pandasaurus edition. The base-game catalog and authoritative rules run in the local Cloudflare Worker. All 40 base-game cards have original, locally served illustrations. Production verification is tracked through the GitHub Actions release workflow.
 
 ## Run locally
 
@@ -22,12 +22,16 @@ npx playwright install chromium
 npx playwright test
 ```
 
-The browser suite starts the local Worker and serves the compiled assets. It currently tests room creation, independent seats, WebSocket chat, browser reload recovery, and the layout of the market, cities, and card details. The game table layout test supplies a fixture. Separate integration tests exercise full real games for two to five seats, reconnects, and rematches. The rule and card evidence is in [RULES_AUDIT.md](RULES_AUDIT.md).
+The browser suite starts the local Worker and serves the compiled assets. It currently tests room creation, independent seats, WebSocket chat, browser reload recovery, a full Worker restart, protected rooms, host removal, mute settings, and the layout of the market, cities, and card details. The game table layout test supplies a fixture. Separate integration tests exercise full real games for two to five seats, reconnects, and rematches. The rule and card evidence is in [RULES_AUDIT.md](RULES_AUDIT.md).
+
+Rooms expire after 30 days without a new seat, chat message, or game action. Keep the private link and any password separate. A returning browser uses its saved seat credential.
 
 ## Production configuration
 
-Use the existing **machikoro2** Worker and the private **adrianylee/machikoro2** repository. Set Cloudflare Workers Builds to the repository root and the `main` branch. Use Node.js 24, `npm run verify` for the build command, and `npm run deploy` for the deploy command. The Wrangler config declares static assets and the SQLite room migration.
+Use the existing **machikoro2** Worker and the private **adrianylee/machikoro2** repository. Store `CLOUDFLARE_API_TOKEN` as a GitHub Actions repository secret and `CLOUDFLARE_ACCOUNT_ID` as an Actions variable or secret. In Cloudflare, disconnect the native Git trigger from this Worker. The repository's build command rejects Cloudflare-native builds to prevent a second deploy path.
 
-GitHub Actions runs the `Validate / validate` job on pull requests and on `main`. Make this job a required check on `main` once it has run in GitHub. Use Cloudflare's GitHub App and Workers Builds token to deploy. The GitHub validation workflow uses no deployment credentials.
+GitHub Actions validates pull requests to `main`. Each push to `main` can deploy only after the type, unit, bundle, and Playwright checks succeed for that commit. Deployment is serialized and the job checks that the commit is still the current `main`. Credentials are supplied only to the deployment step. A smoke check records the URL and Wrangler version ID and verifies the production home page, API health, and an artwork asset.
 
-Once the full local acceptance suite passes, confirm the production deployment matches the merged commit. Check `/api/health`, open the live home page, join from separate devices, complete a game, reconnect during play, and start a rematch. The local Wrangler dry run verifies the bundle and binding declaration.
+Private GitHub Free repositories lack required merge checks. Review the validation result before merging. Failed validation prevents the Actions deployment regardless of merge permissions.
+
+To verify a release, confirm the GitHub run deployed the expected commit. Open the deployed site, create a password-protected test room, join from independent browsers, play through victory, reconnect during play, and rematch. The site hosts the home page publicly and keeps room state behind the private invite and any password the host sets.

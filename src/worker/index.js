@@ -2,7 +2,10 @@ import { DurableObject } from 'cloudflare:workers';
 import { gameCommand } from './game-commands.ts';
 import { RuleError } from '../game/match.ts';
 import { matchView } from '../game/view.ts';
-import { addChat, joinRoom, publicLobby } from './lobby.js';
+import { addChat, joinRoom, publicLobby, removeSeat } from './lobby.js';
+import { makeRoomPassword, verifyRoomPassword } from './password.ts';
+
+const ROOM_LIFETIME = 30 * 24 * 60 * 60 * 1000;
 import {
   displayName, InputError, json, parseMessage, requestMessage, ROOM_ID, tokenHash,
 } from './protocol.js';
@@ -20,7 +23,14 @@ export default {
       return json({ error: 'Cross-origin access is forbidden.' }, 403);
     }
 
-    if (url.pathname === '/api/rooms' && request.method === 'POST') {
+    const isCreate = url.pathname === '/api/rooms' && request.method === 'POST';
+    const isConnect = resource === 'rooms' && ROOM_ID.test(roomId) && extra === undefined && request.method === 'GET';
+    if ((isCreate || isConnect) && request.headers.has('CF-Connecting-IP')) {
+      const route = isCreate ? 'create' : 'connect';
+      const key = `machikoro2:${route}:${request.headers.get('CF-Connecting-IP')}`;
+      if (!(await env.ROOM_LIMIT.limit({ key })).success) return json({ error: 'Too many requests. Try again in a minute.' }, 429);
+    }
+    if (isCreate) {
       const id = crypto.randomUUID().replaceAll('-', '');
       const result = await env.ROOMS.getByName(id).fetch(
         new Request(new URL('/initialize', url), request),
@@ -39,6 +49,8 @@ export default {
 };
 
 export class Room extends DurableObject {
+  authenticating = new WeakSet();
+
   async fetch(request) {
     const { pathname } = new URL(request.url);
     const storage = this.ctx.storage.kv;
@@ -47,9 +59,11 @@ export class Room extends DurableObject {
         const body = await requestMessage(request);
         const name = displayName(body.name);
         const hash = await tokenHash(body.token);
+        const password = await makeRoomPassword(body.password);
         if (storage.get('room')) return json({ error: 'Room already exists.' }, 409);
-        const room = { players: [], chat: [], game: null };
+        const room = { players: [], chat: [], game: null, password, lastActivity: Date.now() };
         joinRoom(room, hash, name);
+        await this.ctx.storage.setAlarm(room.lastActivity + ROOM_LIFETIME);
         storage.put('room', room);
         return json({ ok: true }, 201);
       } catch (error) {
@@ -73,31 +87,66 @@ export class Room extends DurableObject {
       const playerId = socket.deserializeAttachment();
       const storage = this.ctx.storage.kv;
       if (!playerId) {
+        if (this.authenticating.has(socket)) return;
+        this.authenticating.add(socket);
         if (data.type !== 'hello') throw new InputError('Connect to the room first.');
         const hash = await tokenHash(data.token);
         if (socket.readyState !== WebSocket.OPEN || socket.deserializeAttachment()) return;
-        const room = storage.get('room');
+        let room = storage.get('room');
+        if (!room) throw new InputError('This room has expired.');
+        if (room.password && !room.players.some(player => player.tokenHash === hash)) {
+          const permitted = await verifyRoomPassword(room.password, data.password);
+          if (socket.readyState !== WebSocket.OPEN || socket.deserializeAttachment()) return;
+          if (!permitted) throw new InputError('Enter the room password to join.');
+          room = storage.get('room');
+          if (!room) throw new InputError('This room has expired.');
+        }
         const { player, joined } = joinRoom(room, hash, data.name);
-        if (joined) storage.put('room', room);
+        if (joined) this.save(room);
         socket.serializeAttachment(player.id);
         this.broadcast(room);
         return;
       }
 
       const room = storage.get('room');
-      if (data.type === 'chat') {
+      if (!room) throw new InputError('This room has expired.');
+      if (data.type === 'remove') {
+        removeSeat(room, playerId, data.playerId);
+        for (const connection of this.ctx.getWebSockets()) {
+          if (connection.deserializeAttachment() === data.playerId) connection.close(4003, 'The host removed your seat.');
+        }
+      } else if (data.type === 'chat') {
+        if (!room.players.some(player => player.id === playerId)) throw new InputError('This seat is no longer in the room.');
         addChat(room, playerId, data.text, Date.now());
       } else if (!gameCommand(room, playerId, data)) {
         return;
       }
-      storage.put('room', room);
+      this.save(room);
       this.broadcast(room);
     } catch (error) {
       if (!(error instanceof InputError) && !(error instanceof RuleError)) throw error;
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'error', message: error.message }));
+        if (!socket.deserializeAttachment()) socket.close(4001, 'Could not join the room.');
       }
     }
+  }
+
+  save(room) {
+    room.lastActivity = Date.now();
+    this.ctx.storage.kv.put('room', room);
+  }
+
+  async alarm() {
+    const room = this.ctx.storage.kv.get('room');
+    if (!room) return;
+    const expires = room.lastActivity + ROOM_LIFETIME;
+    if (expires > Date.now()) {
+      await this.ctx.storage.setAlarm(expires);
+      return;
+    }
+    this.ctx.storage.kv.delete('room');
+    for (const socket of this.ctx.getWebSockets()) socket.close(4004, 'This room has expired.');
   }
 
   webSocketClose(socket) {
@@ -107,9 +156,10 @@ export class Room extends DurableObject {
   }
 
   broadcast(room, closedSocket) {
+    if (!room) return;
     const connections = this.ctx.getWebSockets().flatMap(socket => {
       const id = socket.deserializeAttachment();
-      return id && socket !== closedSocket && socket.readyState === WebSocket.OPEN
+      return id && room.players.some(player => player.id === id) && socket !== closedSocket && socket.readyState === WebSocket.OPEN
         ? [{ socket, id }]
         : [];
     });

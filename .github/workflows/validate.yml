@@ -1,4 +1,4 @@
-name: Validate
+name: Validate and deploy
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -27,3 +27,46 @@ jobs:
           WRANGLER_SEND_METRICS: 'false'
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    concurrency:
+      group: machikoro2-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Confirm this is the latest main commit
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$main_sha" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Deploy to Cloudflare
+        if: steps.release.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/machikoro2-deploy.jsonl
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo '::error::Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in repository Actions settings.'
+            exit 1
+          fi
+          npm run deploy
+      - name: Smoke test the deployed Worker
+        if: steps.release.outputs.current == 'true'
+        run: node scripts/smoke-production.mjs "$RUNNER_TEMP/machikoro2-deploy.jsonl"

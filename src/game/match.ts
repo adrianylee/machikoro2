@@ -23,14 +23,19 @@ export type MatchAction =
   | { type: 'build'; cardId: string | null }
   | { type: 'choose'; decision: Decision };
 
+export type GameSound = 'roll' | 'income' | 'payment' | 'build' | 'win';
+
 export interface GameEvent {
   id: number;
   playerId: string;
   text: string;
+  sound?: GameSound;
 }
 
 export interface Match extends OpeningState {
   roll: Roll | null;
+  rollVersion?: number;
+  turnStartedAt?: number;
   choice: Choice | null;
   extraTurn: boolean;
   receivedCoins: boolean;
@@ -42,16 +47,16 @@ export interface Match extends OpeningState {
 export function startMatch(ids: string[], random = Math.random): Match {
   const game = {
     ...startGame(ids, CARDS, random),
-    roll: null, choice: null, extraTurn: false, receivedCoins: false,
+    roll: null, turnStartedAt: Date.now(), choice: null, extraTurn: false, receivedCoins: false,
     winner: null, version: 0, events: [],
   };
   log(game, game.players[game.activeSeat], 'opens the first building round.');
   return game;
 }
 
-function log(game: Match, player: Player, text: string) {
+function log(game: Match, player: Player, text: string, sound?: GameSound) {
   const id = (game.events.at(-1)?.id ?? 0) + 1;
-  game.events.push({ id, playerId: player.id, text });
+  game.events.push({ id, playerId: player.id, text, sound });
   if (game.events.length > 150) game.events.shift();
 }
 
@@ -73,14 +78,14 @@ function bank(game: Match, player: Player, amount: number, reason: string) {
   if (amount <= 0) return;
   credit(player, amount);
   if (player === activePlayer(game)) game.receivedCoins = true;
-  log(game, player, `earns ${amount} from ${reason}.`);
+  log(game, player, `earns ${amount} from ${reason}.`, 'income');
 }
 
 function collect(game: Match, payer: Player, recipient: Player, amount: number, reason: string) {
   const paid = transfer(payer, recipient, amount);
   if (paid === 0) return;
   if (recipient === activePlayer(game)) game.receivedCoins = true;
-  log(game, recipient, `collects ${paid} from ${payer.id === activePlayer(game).id ? 'the roller' : 'an opponent'} via ${reason}.`);
+  log(game, recipient, `collects ${paid} from ${payer.id === activePlayer(game).id ? 'the roller' : 'an opponent'} via ${reason}.`, 'payment');
 }
 
 const eligibleHalf = (player: Player) => player.coins > 10 ? Math.floor(player.coins / 2) : 0;
@@ -142,9 +147,10 @@ function finishActivation(game: Match) {
 function performRoll(game: Match, dice: 1 | 2, random: () => number) {
   const roll = rollDice(dice, random);
   game.roll = roll;
+  game.rollVersion = game.version + 1;
   game.receivedCoins = false;
   const active = activePlayer(game);
-  log(game, active, `rolls ${roll.dice.join(' + ')}${dice === 2 ? ` = ${roll.total}` : ''}.`);
+  log(game, active, `rolls ${roll.dice.join(' + ')}${dice === 2 ? ` = ${roll.total}` : ''}.`, 'roll');
   const { red, blueAndGreen, purple } = establishmentActivations(game.players, game.activeSeat, roll.total, ESTABLISHMENTS);
   const bonusIcons = new Set(ownedLandmarks(game).flatMap(({ card }) =>
     card.effect.kind === 'income-bonus' ? [card.effect.icon] : []));
@@ -280,11 +286,12 @@ function performBuild(game: Match, cardId: string | null) {
   }
   const offer = card && buildOffer(game, active, card);
   if (offer?.blocked) throw new RuleError(offer.blocked);
-  if (card) log(game, active, `builds ${card.name} for ${offer!.cost} coins.`);
+  if (card) log(game, active, `builds ${card.name} for ${offer!.cost} coins.`, 'build');
   else log(game, active, 'passes.');
 
   if (game.phase === 'opening') {
     openingBuild(game, active.id, cardId, CARDS);
+    game.turnStartedAt = Date.now();
     log(game, activePlayer(game), game.phase === 'opening' ? 'may build an opening establishment.' : 'starts the first turn.');
     return;
   }
@@ -297,7 +304,7 @@ function performBuild(game: Match, cardId: string | null) {
       if (active.landmarks.length === 3 || card.effect.kind === 'win') {
         game.phase = 'finished';
         game.winner = active.id;
-        log(game, active, 'wins the game!');
+        log(game, active, 'wins the game!', 'win');
         return;
       }
       landmarkBuilt(game, active, card);
@@ -310,6 +317,7 @@ function performBuild(game: Match, cardId: string | null) {
     }
   }
   game.activeSeat = nextSeat(game.activeSeat, game.players.length, game.extraTurn);
+  game.turnStartedAt = Date.now();
   game.extraTurn = false;
   game.phase = 'roll';
   log(game, activePlayer(game), 'may roll.');

@@ -11,6 +11,7 @@ export interface TableCard {
   color: 'red' | 'blue' | 'green' | 'purple' | 'landmark';
   icon?: Icon;
   numbers: readonly number[];
+  prices: readonly number[];
   effect: string;
   art?: string;
 }
@@ -28,6 +29,8 @@ export interface GameView {
   activePlayerId: string;
   openingRound: number;
   dice: number[] | null;
+  rollVersion?: number;
+  turnStartedAt?: number;
   supply: VisibleSupply;
   cities: TableCity[];
   legalBuilds: Record<string, { cost: number; blocked?: string }>;
@@ -70,14 +73,14 @@ function describe(card: Card): string {
   }
 }
 
-const illustrated = new Set(['bakery', 'wheat-field', 'radio-tower']);
 export const TABLE_CARDS: Readonly<Record<string, TableCard>> = Object.fromEntries(Object.values(CARDS).map(card => [
   card.id, {
     id: card.id, name: card.name, effect: describe(card),
     color: card.row === 'landmarks' ? 'landmark' : card.color,
     numbers: card.row === 'landmarks' ? [] : card.numbers,
+    prices: card.row === 'landmarks' ? card.cost : [card.cost],
     icon: card.row === 'landmarks' ? undefined : card.icon,
-    art: illustrated.has(card.id) ? `/art/${card.id}.webp` : undefined,
+    art: `/art/${card.id}.webp`,
   },
 ]));
 
@@ -88,7 +91,7 @@ export function matchView(game: Match, seats: { id: string; name: string }[]): G
     [id, buildOffer(game, active, CARDS[id])] as const)));
   return {
     phase: game.phase, activePlayerId: active.id, openingRound: game.openingRound,
-    dice: game.roll?.dice ?? null, supply, legalBuilds,
+    dice: game.roll?.dice ?? null, rollVersion: game.rollVersion, turnStartedAt: game.turnStartedAt, supply, legalBuilds,
     version: game.version, choice: game.choice, winner: game.winner, events: game.events,
     cities: game.players.map(player => ({
       id: player.id,

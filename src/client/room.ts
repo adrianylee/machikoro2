@@ -3,13 +3,14 @@ import type { GameView } from '../game/view.ts';
 import type { MatchAction } from '../game/match.ts';
 
 type RoomAction = (MatchAction & { version: number }) | { type: 'chat'; text: string }
-  | { type: 'ready'; ready: boolean } | { type: 'start' } | { type: 'rematch'; version: number };
+  | { type: 'remove'; playerId: string } | { type: 'ready'; ready: boolean } | { type: 'start' } | { type: 'rematch'; version: number };
 
 export interface Seat {
   id: string;
   name: string;
   online: boolean;
   ready: boolean;
+  color?: number;
 }
 
 export interface ChatMessage {
@@ -51,12 +52,12 @@ export function newCredential() {
     byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function createRoom(name: string) {
+export async function createRoom(name: string, password?: string) {
   const token = newCredential();
   const response = await fetch('/api/rooms', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, token }),
+    body: JSON.stringify({ name, token, password }),
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? 'Could not create a room.');
@@ -67,22 +68,23 @@ export async function createRoom(name: string) {
   return result.roomId;
 }
 
-export function useRoom(roomId: string, credentials: { token: string; name?: string } | null) {
+export function useRoom(roomId: string, credentials: { token: string; name?: string; password?: string } | null) {
   const [lobby, setLobby] = useState<Lobby | null>(null);
   const [status, setStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
   const [error, setError] = useState('');
   const connection = useRef<WebSocket | null>(null);
+  const lobbyRef = useRef(false);
 
   useEffect(() => {
     if (!credentials) return;
     let disposed = false;
     let attempts = 0;
     let timer: ReturnType<typeof setTimeout>;
-    let authenticated = false;
 
     function connect() {
       if (disposed) return;
       setStatus('connecting');
+      let authenticated = false;
       const endpoint = new URL(`/api/rooms/${roomId}`, location.href);
       endpoint.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const socket = new WebSocket(endpoint);
@@ -93,6 +95,8 @@ export function useRoom(roomId: string, credentials: { token: string; name?: str
         if (message.type === 'error') {
           setError(message.message);
           if (!authenticated) {
+            lobbyRef.current = false;
+            setLobby(null);
             socket.onclose = null;
             socket.close();
             setStatus('offline');
@@ -104,13 +108,25 @@ export function useRoom(roomId: string, credentials: { token: string; name?: str
           attempts = 0;
           saveSeat(roomId, credentials!.token);
           setError('');
+          lobbyRef.current = true;
           setLobby(message);
           setStatus('online');
         }
       };
-      socket.onclose = () => {
+      socket.onclose = event => {
         if (disposed) return;
         setStatus('offline');
+        if (event.code === 4003 || event.code === 4004) {
+          sessionStorage.removeItem(credentialKey(roomId));
+          localStorage.removeItem(credentialKey(roomId));
+          setLobby(null);
+          setError(event.reason || 'This seat is unavailable.');
+          return;
+        }
+        if (attempts >= 5 && !lobbyRef.current) {
+          setError('This room could not be reached. Check the invite link or try again.');
+          return;
+        }
         timer = setTimeout(connect, Math.min(1000 * 2 ** attempts++, 12000));
       };
     }

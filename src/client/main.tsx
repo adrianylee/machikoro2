@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
+import { useGameSound } from './sound.ts';
 import { createRoom, newCredential, recentRoom, savedSeat, useRoom, validRoom } from './room.ts';
 import type { Lobby } from './room.ts';
 import { GameTable, tablePhase } from './GameTable.tsx';
@@ -21,13 +22,15 @@ function roomFrom(value: string) {
   }
 }
 
-function Icon({ name }: { name: 'city' | 'link' | 'sun' | 'moon' | 'help' | 'exit' }) {
+function Icon({ name }: { name: 'city' | 'link' | 'sun' | 'moon' | 'help' | 'exit' | 'sound' | 'muted' }) {
   const paths = {
     city: 'M3 21V10l5-3 5 3v11M13 21V5l4-2 4 2v16M2 21h20M7 12h2m-2 4h2m7-8h2m-2 4h2m-2 4h2',
     link: 'M10 13a4 4 0 0 0 6 .5l3-3a4 4 0 1 0-5.6-5.7l-1.7 1.7m2.3 4.5a4 4 0 0 0-6-.5l-3 3a4 4 0 1 0 5.6 5.7l1.7-1.7',
     sun: 'M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
     moon: 'M20.5 14.2A8.8 8.8 0 0 1 9.8 3.5 9 9 0 1 0 20.5 14.2Z',
     help: 'M12 22A10 10 0 1 0 12 2a10 10 0 0 0 0 20Zm-3-13a3 3 0 0 1 6 0c0 2-3 2.3-3 4m0 4h.01',
+    sound: 'M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6m2-8a7 7 0 0 1 0 10',
+    muted: 'M4 9h4l5-4v14l-5-4H4zm12 1 5 5m0-5-5 5',
     exit: 'M11 20H4V4h7m3 4 4 4-4 4m-5-4h9',
   };
   return <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none"
@@ -52,7 +55,7 @@ function Home() {
     }
     setBusy(true);
     try {
-      const id = await createRoom(String(form.get('name')));
+      const id = await createRoom(String(form.get('name')), String(form.get('password') ?? ''));
       location.assign(`/room/${id}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not create a room.');
@@ -80,7 +83,12 @@ function Home() {
       </div>
       <form key={mode} onSubmit={submit}>
         <h2>{mode === 'create' ? 'Start a private table' : 'Join a private table'}</h2>
-        {mode === 'create' ? <label>Display name<input autoComplete="nickname" name="name" maxLength={32} required /></label>
+        {mode === 'create' ? <>
+          <label>Display name<input autoComplete="nickname" name="name" maxLength={32} required /></label>
+          <label>Room password <span className="muted">Optional</span>
+            <input name="password" type="password" maxLength={96} autoComplete="new-password" />
+          </label>
+        </>
           : <label>Invite link or room code<input name="invite" autoCapitalize="none" spellCheck={false} required /></label>}
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary" disabled={busy}>{busy ? 'Creating…' : mode === 'create' ? 'Create game' : 'Join game'}</button>
@@ -108,7 +116,7 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
         {lobby.chat.length === 0 && <p className="muted">No messages yet.</p>}
         {lobby.chat.map(message => {
           const index = lobby.players.findIndex(seat => seat.id === message.playerId);
-          return <article className="message" key={message.id} style={{ borderColor: colors[index] }}>
+          return <article className="message" key={message.id} style={{ borderColor: colors[lobby.players[index]?.color ?? index] }}>
             <strong>{lobby.players[index]?.name ?? 'Player'}</strong>
             <p>{message.text}</p>
           </article>;
@@ -126,7 +134,7 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
     </> : tab === 'Game Log' ? <div className="chat-feed" role="log" aria-label="Game events">
       {lobby.game?.events?.length ? lobby.game.events.map(event => {
         const index = lobby.players.findIndex(seat => seat.id === event.playerId);
-        return <article className="message" key={event.id} style={{ borderColor: colors[index] }}>
+        return <article className="message" key={event.id} style={{ borderColor: colors[lobby.players[index]?.color ?? index] }}>
           <p><strong>{lobby.players[index]?.name ?? 'Player'}</strong> {event.text}</p>
         </article>;
       }) : <p className="muted">Game events appear here after the game starts.</p>}
@@ -135,13 +143,16 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (text: string) => boole
   </section>;
 }
 
-function RoomView({ id }: { id: string }) {
+function RoomView({ id, sound }: { id: string; sound: boolean }) {
   const [credentials, setCredentials] = useState(() => {
     const token = savedSeat(id);
-    return token ? { token } as { token: string; name?: string } : null;
+    return token ? { token } as { token: string; name?: string; password?: string } : null;
   });
   const [notice, setNotice] = useState('');
+  const removal = useRef<HTMLDialogElement>(null);
+  const [removeId, setRemoveId] = useState('');
   const { lobby, status, error, send } = useRoom(id, credentials);
+  useGameSound(sound, lobby?.game?.events);
 
   async function invite() {
     try {
@@ -158,10 +169,15 @@ function RoomView({ id }: { id: string }) {
       {credentials && !error ? <p role="status">{status === 'offline' ? 'Connection lost. Retrying…' : 'Connecting…'}</p>
         : <form onSubmit={event => {
           event.preventDefault();
-          const name = String(new FormData(event.currentTarget).get('name'));
-          setCredentials({ name, token: newCredential() });
+          const form = new FormData(event.currentTarget);
+          const name = String(form.get('name'));
+          const password = String(form.get('password') ?? '');
+          setCredentials({ name, password, token: newCredential() });
         }}>
           <label>Display name<input autoComplete="nickname" name="name" maxLength={32} required /></label>
+          <label>Room password <span className="muted">If set by the host</span>
+            <input name="password" type="password" maxLength={96} autoComplete="current-password" />
+          </label>
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="primary">Join game</button>
         </form>}
@@ -195,13 +211,25 @@ function RoomView({ id }: { id: string }) {
           {host && lobby.game?.phase === 'finished' && <button className="primary lobby-action"
             disabled={status !== 'online'} onClick={() => send({ type: 'rematch', version: lobby.game!.version })}>Play again</button>}
           <ul>
-            {lobby.players.map((seat, index) => <li key={seat.id} style={{ borderColor: colors[index] }}>
+            {lobby.players.map((seat, index) => <li key={seat.id} style={{ borderColor: colors[seat.color ?? index] }}>
               <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
+              {lobby.game?.cities.filter(city => city.id === seat.id).map(city => <span className="roster-stats" key={city.id}>
+                {city.coins} coins · {city.landmarks.length}/3
+              </span>)}
               <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}{!lobby.game && seat.ready ? ' · Ready' : ''}</span>
+              {host && !lobby.game && seat.id !== lobby.self && <button className="remove-seat" type="button"
+                aria-label={`Remove ${seat.name}`} onClick={() => { setRemoveId(seat.id); removal.current?.showModal(); }}>Remove</button>}
             </li>)}
           </ul>
         </section>
         <Activity lobby={lobby} send={text => send({ type: 'chat', text })} />
+        <dialog ref={removal} className="panel rules" aria-label="Remove player">
+          <h2>Remove {lobby.players.find(player => player.id === removeId)?.name ?? 'player'}?</h2>
+          <form method="dialog" className="detail-buttons">
+            <button className="secondary">Cancel</button>
+            <button className="primary" disabled={status !== 'online'} onClick={() => send({ type: 'remove', playerId: removeId })}>Remove player</button>
+          </form>
+        </dialog>
       </aside>
     </div>
   </main>;
@@ -212,12 +240,14 @@ function App() {
     const preferred = localStorage.getItem('machi-theme');
     return preferred ? preferred === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   });
+  const [sound, setSound] = useState(() => localStorage.getItem('machi-sound') !== 'off');
   const rules = useRef<HTMLDialogElement>(null);
   const room = /^\/room\/([a-f0-9]{32})\/?$/.exec(location.pathname)?.[1];
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     localStorage.setItem('machi-theme', dark ? 'dark' : 'light');
   }, [dark]);
+  useEffect(() => localStorage.setItem('machi-sound', sound ? 'on' : 'off'), [sound]);
 
   return <>
     <header className="masthead">
@@ -226,12 +256,14 @@ function App() {
         <nav aria-label="Game settings">
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setDark(value => !value)}><Icon name={dark ? 'sun' : 'moon'} /></button>
+          <button className="icon-button" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'}
+            onClick={() => setSound(value => !value)}><Icon name={sound ? 'sound' : 'muted'} /></button>
           <button className="icon-button" aria-label="How to play" onClick={() => rules.current?.showModal()}><Icon name="help" /></button>
           {room && <a className="icon-button" href="/" aria-label="Leave room"><Icon name="exit" /></a>}
         </nav>
       </div>
     </header>
-    {room ? <RoomView id={room} /> : <Home />}
+    {room ? <RoomView id={room} sound={sound} /> : <Home />}
     <dialog ref={rules} className="panel rules">
       <h2>How to play</h2>
       <p>Start with five coins and three rounds to buy establishments. You can build one establishment or pass each round.</p>

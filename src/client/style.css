@@ -170,7 +170,14 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--out
 
 }
 
+.turn-clock { font-variant-numeric: tabular-nums; }
+.card-icon-label { text-transform: capitalize; }
+.table-card[data-stacked] { box-shadow: 1px 2px var(--outline), 2px 4px var(--soft); }
+.roster-stats { margin-inline-start: auto; }
 .lobby-action { margin-top: 12px; }
+.remove-seat { min-height: 32px; border: 0; border-radius: 5px; background: transparent; color: var(--danger); font-size: .78rem; }
+.remove-seat:hover { background: var(--soft); }
+@media (max-width: 365px) { .header-inner { gap: 3px; } nav { gap: 0; } .icon-button { width: 38px; } }
 .effect-choice { padding: 15px; }
 .effect-choice p { margin: 8px 0 12px; }
 .effect-choice form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }

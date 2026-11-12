@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MatchAction } from '../game/match.ts';
 import { TABLE_CARDS } from '../game/view.ts';
 import type { GameView, TableCard } from '../game/view.ts';
@@ -20,8 +20,20 @@ export function tablePhase(game: GameView) {
   }
 }
 
+function TurnClock({ start }: { start: number }) {
+  const elapsed = () => Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const [seconds, setSeconds] = useState(elapsed);
+  useEffect(() => {
+    const update = () => setSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, [start]);
+  return <time className="muted turn-clock" aria-label="Elapsed turn time">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</time>;
+}
+
 function CardFace({ card, count, cost, open }: { card: TableCard; count: number; cost?: number; open: () => void }) {
-  return <button className="table-card" data-color={card.color} onClick={open}
+  return <button className="table-card" data-color={card.color} data-stacked={count > 1 || undefined} onClick={open}
     aria-label={`${card.name}${count > 1 ? `, ${count} copies` : ''}`}>
     <span className="card-meta">
       <span>{card.numbers.length ? card.numbers.join(' · ') : 'Landmark'}</span>
@@ -61,7 +73,8 @@ export function GameTable({ game, self, online, send }: {
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
         {canBuild && <p className="muted">{game.phase === 'opening' ? 'Build an establishment or pass.' : 'Build one card or pass.'}</p>}
       </div>
-      {!!game.dice?.length && <div key={game.dice.join("-")} className="dice-display" aria-label={`Rolled ${game.dice.join(' and ')}`}>
+      {game.turnStartedAt && <TurnClock start={game.turnStartedAt} />}
+      {!!game.dice?.length && <div key={game.rollVersion ?? game.dice.join("-")} className="dice-display" aria-label={`Rolled ${game.dice.join(' and ')}`}>
         {game.dice.map((die, index) => <span key={index}>{die}</span>)}
       </div>}
       {online && isActive && game.phase === 'roll' && <div className="turn-buttons">
@@ -104,7 +117,10 @@ export function GameTable({ game, self, online, send }: {
         {selected.art && <img src={selected.art} alt="" />}
         <h2>{selected.name}</h2>
         <p className="muted">{selected.numbers.length ? `Activates on ${selected.numbers.join(' or ')}` : 'Landmark'}</p>
+        {selected.icon && <p className="muted card-icon-label">Category · {selected.icon === 'cup' ? 'Restaurant' : selected.icon}</p>}
         <p>{selected.effect}</p>
+        {selected.prices.length > 1 && <p className="muted">First / second / third · {selected.prices.join(' / ')} coins</p>}
+        {!offer && selected.prices.length === 1 && <p>{selected.prices[0]} {selected.prices[0] === 1 ? 'coin' : 'coins'}</p>}
         {offer && <p>{offer.cost} {offer.cost === 1 ? 'coin' : 'coins'}</p>}
         {offer?.blocked && <p className="muted">{offer.blocked}</p>}
         <div className="detail-buttons">

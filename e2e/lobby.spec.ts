@@ -41,6 +41,8 @@ test('create a private room, join from a second browser, chat and recover the gu
     await active.getByRole('button', { name: 'Pass', exact: true }).click();
     await page.getByRole('button', { name: 'Game Log', exact: true }).click();
     await expect(page.getByRole('log', { name: 'Game events' }).getByText('passes.')).toBeVisible();
+    await page.screenshot({ path: info.outputPath('live-desktop-table.png'), fullPage: true });
+    await guest.screenshot({ path: info.outputPath('live-phone-table.png') });
   } finally {
     await phone.close();
   }
