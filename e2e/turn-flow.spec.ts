@@ -57,13 +57,14 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
     await expect(second.locator('.dice-flight[data-settled] .die-flat')).toBeVisible({ timeout: 6500 });
     await expect(second.locator('.odds-table [data-hit]')).toHaveCount(2);
 
-    const nudge = second.getByRole('button', { name: /^Nudge:/ });
+    const nudge = second.getByRole('region', { name: 'Turn controls' }).getByRole('button', { name: /^Nudge:/ });
     await nudge.click();
     await expect(nudge.locator('.nudge-counter')).toHaveText('×1');
     await nudge.click();
     await expect(starting.locator('.nudge-notice')).toHaveText(`${second === page ? 'Aki' : 'Ren'} nudged you`);
     await expect(nudge.locator('.nudge-counter')).toHaveText('×2');
     await expect(starting.locator('.nudge-counter')).toHaveCount(0);
+    await expect(starting.getByRole('region', { name: 'Turn controls' }).getByRole('button', { name: /^Nudge:/ })).toHaveCount(0);
     await second.getByRole('button', { name: 'Table Controls' }).click();
     await second.getByRole('button', { name: /^Vote to skip .+’s turn$/ }).click();
     await expect(starting.getByText('Skip turn vote', { exact: true })).toBeVisible();

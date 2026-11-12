@@ -5,6 +5,7 @@ import { useAudio, useButtonFeedback, useGameSound } from './sound.ts';
 import { createRoom, newCredential, recentRoom, roomPath, savedSeat, useRoom, validRoom } from './room.ts';
 import type { Lobby, RoomAction } from './room.ts';
 import { GameTable, tablePhase, TurnClock } from './GameTable.tsx';
+import { Coin } from './Cards.tsx';
 import { Notifications } from './Notifications.tsx';
 import { References } from './References.tsx';
 import '@fontsource-variable/dm-sans';
@@ -154,7 +155,7 @@ function Activity({ lobby, send }: { lobby: Lobby; send: (action: RoomAction) =>
   </section>;
 }
 
-function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; audio: ReturnType<typeof useAudio>; notice: string }) {
+function RoomView({ id, sound, audio, notices }: { id: string; sound: boolean; audio: ReturnType<typeof useAudio>; notices: { id: number; text: string }[] }) {
   const [credentials, setCredentials] = useState(() => {
     const token = savedSeat(id);
     return token ? { token } as { token: string; name?: string; password?: string } : null;
@@ -215,11 +216,14 @@ function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; au
       <div><p className="eyebrow">{count} {count === 1 ? 'player' : 'players'}{!lobby.game && ' connected'}</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
       {turnStart && lobby.game?.phase !== 'finished' && <TurnClock start={turnStart} serverNow={lobby.game?.serverNow} />}
     </div>
-    {(notice || status !== 'online') && <p className="status-line" aria-live="polite">{notice || 'Reconnecting…'}</p>}
+    {status !== 'online' && <p className="status-line" aria-live="polite">Reconnecting…</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="table-grid">
       {lobby.game ? <GameTable game={lobby.game} self={lobby.self} cityId={cityId} online={status === 'online'}
         send={action => send({ ...action, version: lobby.game!.version })}
+        nudge={active && <button type="button" className="secondary roster-nudge" disabled={status !== 'online'} onClick={sendNudge}>
+          Nudge: {active.name}{nudge && nudge.turn === turn && <span className="nudge-counter" aria-hidden="true" key={nudge.at}>×{nudge.count}</span>}
+        </button>}
         controls={lobby.controls} colors={Object.fromEntries(lobby.players.map((seat, index) => [seat.id, colors[seat.color ?? index]]))}
         rematch={() => send({ type: 'rematch', version: lobby.game!.version })}
         congratulate={() => send({ type: 'congratulate', version: lobby.game!.version })} /> : <section className="panel room-stage">
@@ -230,20 +234,20 @@ function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; au
       </section>}
       <aside className="table-sidebar">
         <section className="panel roster">
-          <div className="roster-heading"><h2>Player order</h2>
-            {active && lobby.game?.phase !== 'finished' && <button type="button" className="secondary roster-nudge"
-              disabled={active.id === lobby.self || status !== 'online'} onClick={sendNudge}>
-              Nudge: {active.name}{nudge && nudge.turn === turn && <span className="nudge-counter" aria-hidden="true" key={nudge.at}>×{nudge.count}</span>}
-            </button>}
-          </div>
+          <h2>Player order</h2>
           <ul>
             {playerOrder.map((id, index) => {
               const seat = lobby.players.find(player => player.id === id)!;
+              const change = lobby.game?.rollCoinChanges?.[id];
               return <li key={seat.id} data-motion-anchor={id === lobby.self && cityId !== lobby.self ? id : undefined} data-active={lobby.game?.phase !== 'finished' && lobby.game?.activePlayerId === id || undefined}
                 style={{ '--player-color': colors[seat.color ?? index] } as CSSProperties}>
               <span className="seat-number" aria-label={`Turn order ${index + 1}`}>{index + 1}</span>
-              <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
-              <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}</span>
+              <strong title={seat.name}>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
+              <span>{seat.online ? 'Online' : 'Away'}</span>
+              {!!change && <span className="roll-coin-change" data-loss={change < 0 || undefined}
+                aria-label={`${change > 0 ? 'Gained' : 'Lost'} ${Math.abs(change)} coins this roll`}>
+                {change > 0 ? '+' : '−'}<Coin value={Math.abs(change)} />
+              </span>}
               {host && !lobby.game && seat.id !== lobby.self && <button className="remove-seat" type="button"
                 aria-label={`Remove ${seat.name}`} onClick={() => { setRemoveId(seat.id); removal.current?.showModal(); }}>Remove</button>}
             </li>; })}
@@ -265,7 +269,7 @@ function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; au
         </dialog>
       </aside>
     </div>
-    <Notifications lobby={lobby} send={send} />
+    <Notifications lobby={lobby} send={send} notices={notices} />
   </main>;
 }
 
@@ -278,7 +282,20 @@ function App() {
   const audio = useAudio(sound);
   useButtonFeedback(sound, audio);
   const rules = useRef<HTMLDialogElement>(null);
-  const [notice, setNotice] = useState('');
+  const [notices, setNotices] = useState<{ id: number; text: string }[]>([]);
+  const noticeId = useRef(0);
+  const noticeTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => () => noticeTimers.current.forEach(clearTimeout), []);
+
+  function showNotice(text: string) {
+    const id = ++noticeId.current;
+    setNotices(previous => [...previous, { id, text }]);
+    const timer = setTimeout(() => {
+      noticeTimers.current.delete(timer);
+      setNotices(previous => previous.filter(notice => notice.id !== id));
+    }, 3000);
+    noticeTimers.current.add(timer);
+  }
   const room = roomPath.exec(location.pathname)?.[1]?.toLowerCase();
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -294,9 +311,9 @@ function App() {
         {room && <div className="room-invite"><span className="room-code" title={room.toUpperCase()}>{room.toUpperCase()}</span><button className="secondary copy-room" onClick={async () => {
             try {
               await navigator.clipboard.writeText(new URL(`/room/${room}`, location.origin).href);
-              setNotice('Invite link copied.');
+              showNotice('Invite link copied.');
             } catch {
-              setNotice(`Copy the invite link from your address bar.`);
+              showNotice('Copy the invite link from your address bar.');
             }
           }}>Copy invite link</button></div>}
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -308,7 +325,7 @@ function App() {
         </nav>
       </div>
     </header>
-    {room ? <RoomView id={room} sound={sound} audio={audio} notice={notice} /> : <Home />}
+    {room ? <RoomView id={room} sound={sound} audio={audio} notices={notices} /> : <Home />}
     <dialog ref={rules} className="panel rules">
       <h2>How to play</h2>
       <p>Start with five coins and three rounds to buy establishments. You can build one establishment or pass each round.</p>
