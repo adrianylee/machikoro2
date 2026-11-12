@@ -59,6 +59,7 @@ export interface Match extends OpeningState {
   dieColors?: ('pink' | 'green')[];
   resolution?: { stage: ResolutionStage | 'build' | 'next-turn' | 'resume-opening' | 'resume-roll'; at: number };
   resolvingStep?: ResolutionStage | 'roll';
+  landmarkTriggers?: Record<string, number>;
   stats?: Record<string, PlayerStats>;
   turnStartedAt?: number;
   turnBeganAt?: number;
@@ -97,6 +98,10 @@ function activePlayer(game: Match) {
 
 function ownedLandmarks(game: Match) {
   return game.players.flatMap(owner => owner.landmarks.map(id => ({ owner, card: CARDS[id] as Landmark })));
+}
+
+function markLandmark(game: Match, id: string) {
+  (game.landmarkTriggers ??= {})[id] = Date.now();
 }
 
 function countIcon(player: Player, icon: Icon) {
@@ -144,28 +149,33 @@ function finishActivation(game: Match, delay: number) {
   const roll = game.roll!;
   const active = activePlayer(game);
   const landmarks = ownedLandmarks(game);
-  let moving = false;
+  let moving: Landmark | undefined;
   for (const { card } of landmarks) {
     const effect = card.effect;
     switch (effect.kind) {
       case 'roll-income':
-        if (roll.total === effect.total) bank(game, active, effect.coins, card.name);
+        if (roll.total === effect.total) {
+          markLandmark(game, card.id);
+          bank(game, active, effect.coins, card.name);
+        }
         break;
       case 'doubles-turn':
         if (roll.doubles) {
+          markLandmark(game, card.id);
           game.extraTurn = true;
           log(game, active, `earns an extra turn via ${card.name}.`);
         }
         break;
       case 'doubles-collection':
         if (roll.doubles) {
+          markLandmark(game, card.id);
           for (const payer of counterclockwiseOpponents(game.players, game.activeSeat)) {
             collect(game, payer, active, effect.coins, card.name);
           }
         }
         break;
       case 'doubles-transfer':
-        moving = roll.doubles;
+        if (roll.doubles) moving = card;
         break;
     }
   }
@@ -174,11 +184,13 @@ function finishActivation(game: Match, delay: number) {
     for (const { card } of landmarks) {
       const effect = card.effect;
       if (effect.kind === 'no-income' && effect.dice === roll.dice.length) {
+        markLandmark(game, card.id);
         bank(game, active, effect.coins, card.name);
       }
     }
   }
   if (moving && Object.keys(active.establishments).length > 0) {
+    markLandmark(game, moving.id);
     const right = [...counterclockwiseOpponents(game.players, game.activeSeat)][0];
     game.choice = { kind: 'move', recipientId: right.id };
     delete game.resolution;
@@ -202,6 +214,7 @@ function scheduleResolution(game: Match, stage: NonNullable<Match['resolution']>
 function performRoll(game: Match, dice: 1 | 2, random: () => number, delay: number, motion?: ThrowMotion) {
   const roll = rollDice(dice, random);
   game.roll = roll;
+  delete game.landmarkTriggers;
   game.rollVersion = game.version + 1;
   game.receivedCoins = false;
   const active = activePlayer(game);
@@ -223,8 +236,8 @@ function resolveEstablishments(game: Match, stage: ResolutionStage | undefined, 
   const active = activePlayer(game);
   const roll = game.roll!;
   const { red, blueAndGreen, purple } = establishmentActivations(game.players, game.activeSeat, roll.total, ESTABLISHMENTS);
-  const bonusIcons = new Set(ownedLandmarks(game).flatMap(({ card }) =>
-    card.effect.kind === 'income-bonus' ? [card.effect.icon] : []));
+  const bonuses = new Map(ownedLandmarks(game).flatMap(({ card }) =>
+    card.effect.kind === 'income-bonus' ? [[card.effect.icon, card.id] as const] : []));
   let exchanges = 0;
   const activations = stage === undefined ? [...red, ...blueAndGreen, ...purple]
     : stage === 'red' ? red : stage === 'purple' ? purple
@@ -232,13 +245,16 @@ function resolveEstablishments(game: Match, stage: ResolutionStage | undefined, 
   for (const { playerId, cardId, copies } of activations) {
     const owner = game.players.find(player => player.id === playerId)!;
     const card = ESTABLISHMENTS[cardId];
-    const bonus = Number(bonusIcons.has(card.icon));
+    const modifier = bonuses.get(card.icon);
+    const bonus = Number(!!modifier);
     const effect = card.effect;
     switch (effect.kind) {
       case 'restaurant':
+        if (modifier && active.coins > copies * effect.coins) markLandmark(game, modifier);
         collect(game, active, owner, copies * (effect.coins + bonus), card.name);
         break;
       case 'bank':
+        if (modifier) markLandmark(game, modifier);
         bank(game, owner, copies * (effect.coins * (effect.per ? countIcon(owner, effect.per) : 1) + bonus), card.name);
         break;
       case 'collect':

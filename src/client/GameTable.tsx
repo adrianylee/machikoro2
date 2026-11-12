@@ -3,7 +3,10 @@ import type { MatchAction } from '../game/match.ts';
 import { TABLE_CARDS } from '../game/view.ts';
 import type { GameView } from '../game/view.ts';
 import { EffectChoice } from './EffectChoice.tsx';
-import { Balance, CardTile, CitySummary, Symbol } from './Cards.tsx';
+import { Balance, CardTile, CityFilters, matchesCityFilter } from './Cards.tsx';
+import type { CityFilter } from './Cards.tsx';
+import { MarketSidebar } from './MarketSidebar.tsx';
+import type { SeatColors } from './MarketSidebar.tsx';
 import { DiceBoard, DiceTray } from './Dice.tsx';
 import { Results } from './Results.tsx';
 import type { TableControls } from '../worker/controls.ts';
@@ -39,7 +42,7 @@ export function TurnClock({ start, serverNow }: { start: number; serverNow?: num
   return <time className="turn-clock" aria-label="Elapsed turn time">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</time>;
 }
 
-export function GameTable({ game, self, cityId, online, send, rematch, congratulate, controls }: {
+export function GameTable({ game, self, cityId, online, send, rematch, congratulate, controls, colors }: {
   game: GameView;
   self: string;
   cityId: string;
@@ -48,7 +51,10 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
   rematch: () => boolean;
   congratulate: () => boolean;
   controls?: TableControls;
+  colors: SeatColors;
 }) {
+  const [selection, setSelection] = useState<{ cityId: string; filter?: CityFilter }>();
+  const filter = selection?.cityId === cityId ? selection.filter : undefined;
   const cityRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const row = cityRow.current;
@@ -65,13 +71,15 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
     return () => row.removeEventListener('wheel', sideways);
   }, [cityId]);
   const city = game.cities.find(entry => entry.id === cityId);
+  const visibleCity = city && [...city.establishments, ...city.landmarks].filter(stack => matchesCityFilter(TABLE_CARDS[stack.id], filter))
+    .sort((a, b) => (TABLE_CARDS[a.id].numbers[0] ?? 13) - (TABLE_CARDS[b.id].numbers[0] ?? 13));
   const viewerCoins = game.cities.find(entry => entry.id === self)?.coins ?? 0;
   const activeCity = game.cities.find(entry => entry.id === game.activePlayerId);
   const isActive = game.activePlayerId === self;
   const canBuild = online && isActive && (game.phase === 'opening' || game.phase === 'build');
 
   return <div className="game-stage">
-    {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} congratulate={congratulate} controls={controls} /> : <section className="panel turn-controls" aria-label="Turn controls">
+    {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} congratulate={congratulate} controls={controls} colors={colors} /> : <section className="panel turn-controls" aria-label="Turn controls">
       <div>
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
         {canBuild && <p className="muted">{game.phase === 'opening' ? 'Build an establishment or pass.' : 'Build one card or pass.'}</p>}
@@ -84,21 +92,7 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
     {isActive && game.choice && <EffectChoice key={game.version} game={game} self={self} disabled={!online}
       choose={decision => send({ type: 'choose', decision })} />}
     <div className="market-neighborhood">
-      <div className="market-side">
-      <aside className="panel neighbors" aria-label="Opponents’ cities">
-        {game.cities.filter(entry => entry.id !== self).map(entry => <section key={entry.id} data-motion-anchor={entry.id}>
-          <h3>{entry.name}</h3><Balance amount={entry.coins} />
-          <div className="mini-cards">
-            {[...entry.establishments, ...entry.landmarks].map(stack => <CardTile mini key={stack.id} card={TABLE_CARDS[stack.id]}
-              count={stack.count} />)}
-            {!entry.establishments.length && !entry.landmarks.length && <span className="muted">Empty city</span>}
-          </div>
-        </section>)}
-      </aside>
-      <section className="panel table-bank" aria-label="Bank" data-motion-anchor="bank">
-        <h2>Bank</h2><div className="bank-card"><img src="/table-bank.webp" alt="" /><Symbol name="bag" /></div>
-      </section>
-      </div>
+      <MarketSidebar game={game} self={self} colors={colors} />
     <section className="panel market" aria-label="Market">
       <h2>Market</h2>
       {rows.map(([key, label]) => <section className="market-row" key={key}>
@@ -119,12 +113,11 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
       <div className="city-heading">
         <div><h2>{city.id === self ? 'Your city' : `${city.name}’s city`}</h2>
           <div className="city-balance" data-motion-anchor={city.id === self ? self : undefined}><Balance amount={city.coins} /> <span className="muted">{city.landmarks.length}/3 landmarks</span></div></div>
-        <CitySummary stacks={[...city.establishments, ...city.landmarks]} />
+        <CityFilters current={filter} select={value => { if (cityRow.current) cityRow.current.scrollLeft = 0; setSelection({ cityId, filter: value }); }} />
       </div>
       <div className="card-row" ref={cityRow}>
-        {[...city.establishments, ...city.landmarks].map(stack => <CardTile key={stack.id} card={TABLE_CARDS[stack.id]}
-          count={stack.count} />)}
-        {!city.establishments.length && !city.landmarks.length && <p className="muted">No buildings yet.</p>}
+        {visibleCity?.map(stack => <CardTile inline key={stack.id} card={TABLE_CARDS[stack.id]} count={stack.count} />)}
+        {!visibleCity?.length && <p className="muted">{filter ? 'No buildings match this filter.' : 'No buildings yet.'}</p>}
       </div>
     </section>}
     <TableMotion events={game.events} />

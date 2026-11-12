@@ -3,9 +3,8 @@ import { BuildingArt } from './BuildingArt.tsx';
 import { createPortal } from 'react-dom';
 import { CARDS } from '../game/catalog.ts';
 import type { Icon } from '../game/catalog.ts';
-import { TABLE_CARDS } from '../game/view.ts';
+import { DiceGlyph } from './Dice.tsx';
 import type { TableCard } from '../game/view.ts';
-import type { Stack } from '../game/supply.ts';
 
 const paths = {
   cup: 'M3 7h14v5a6 6 0 0 1-6 6H9a6 6 0 0 1-6-6Zm14 1h2a3 3 0 0 1 0 6h-2M3 21h16',
@@ -88,56 +87,49 @@ function compactEffect(card: TableCard) {
   }
 }
 
-export function CardSummary({ card }: { card: TableCard }) {
+export function CardSummary({ card, compact = true }: { card: TableCard; compact?: boolean }) {
   const split = card.name.lastIndexOf(' ') + 1;
   return <><strong className="card-title">{card.name.slice(0, split)}<span className="effect-term">{card.name.slice(split)} <Symbol name={card.icon ?? 'landmark'} /></span></strong>
-    <span className="card-effect"><EffectText text={compactEffect(card)} /></span></>;
+    {compact && <span className="card-effect"><EffectText text={compactEffect(card)} /></span>}</>;
 }
 
 export function CardInformation({ card }: { card: TableCard }) {
   return <><p><EffectText text={card.effect} /></p>
     <p className="muted">{card.copies} {card.copies === 1 ? 'copy' : 'copies'} in the deck
       {card.numbers.length > 0 && ` · Activates on ${card.numbers.join(' or ')}`}</p>
-    {card.color === 'landmark' && <p className="muted">{card.prices.length === 1 ? 'Fixed cost' : 'First / second / third'} · {card.prices.join(' / ')} coins</p>}</>;
+    {card.color === 'landmark' && <p className="muted landmark-prices">{card.prices.join(' / ')} <span className="coin" aria-label="coins">¢</span></p>}</>;
 }
 
-export function CitySummary({ stacks }: { stacks: Stack[] }) {
-  const categories = new Map<SymbolName, Stack[]>();
-  for (const stack of stacks) {
-    const icon = TABLE_CARDS[stack.id].icon ?? 'landmark';
-    const group = categories.get(icon) ?? [];
-    group.push(stack);
-    categories.set(icon, group);
-  }
-  if (!categories.size) return null;
-  return <div className="city-summary" role="group" aria-label="City property summary">
-    {[...categories].map(([icon, properties]) => {
-      const total = properties.reduce((sum, property) => sum + property.count, 0);
-      return <div key={icon} className="summary-category">
-        <span className="mini-card" tabIndex={0} aria-label={`${labels[icon]}, ${total} ${total === 1 ? 'card' : 'cards'}`}>
-          <Symbol name={icon} />{total > 1 && <small>×{total}</small>}
-        </span>
-        <div className="panel summary-preview" role="region" aria-label={`${labels[icon]} properties`}>
-          {properties.map(({ id, count }) => {
-            const card = TABLE_CARDS[id];
-            return <div className="summary-property" key={id}>
-              <BuildingArt source={card.art} />
-              <div><strong>{card.name} {count > 1 && <small>×{count}</small>}</strong><CardInformation card={card} /></div>
-            </div>;
-          })}
-        </div>
-      </div>;
-    })}
+const cityFilters = [['low', 'One die'], ['high', 'Two dice'], ['cup', 'Restaurants'], ['grain', 'Wheat'],
+  ['fruit', 'Fruit'], ['flower', 'Flowers'], ['gear', 'Industry'], ['shop', 'Secondary industries'],
+  ['major', 'Major establishments'], ['landmark', 'Landmarks']] as const;
+export type CityFilter = typeof cityFilters[number][0];
+
+export function matchesCityFilter(card: TableCard, filter?: CityFilter) {
+  if (!filter) return true;
+  if (filter === 'low' || filter === 'high') return CARDS[card.id].row === filter;
+  if (filter === 'shop') return card.color === 'green';
+  if (filter === 'landmark') return card.color === 'landmark';
+  return card.icon === filter;
+}
+
+export function CityFilters({ current, select }: { current?: CityFilter; select: (value?: CityFilter) => void }) {
+  return <div className="city-summary" role="group" aria-label="Filter city properties">
+    {cityFilters.map(([id, label]) => <button key={id} type="button" className="mini-card city-filter"
+      title={label} aria-label={label} aria-pressed={current === id} onClick={() => select(current === id ? undefined : id)}>
+      {id === 'low' || id === 'high' ? <DiceGlyph count={id === 'low' ? 1 : 2} /> : <Symbol name={id} />}
+    </button>)}
   </div>;
 }
 
-export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }: {
+export function CardTile({ card, count, cost, blocked, unaffordable, mini, inline, ownerName, buy }: {
   card: TableCard; count: number; cost?: number; blocked?: string;
-  unaffordable?: boolean; mini?: boolean; buy?: () => boolean;
+  unaffordable?: boolean; mini?: boolean; inline?: boolean; ownerName?: string; buy?: () => boolean;
 }) {
   const [preview, setPreview] = useState<{ left: number; top: number; width: number; closing?: boolean }>();
   const anchor = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
+  const keyboardPreview = useRef(false);
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const description = `${card.name}${count > 1 ? `, ${count} copies` : ''}${unaffordable ? ', unaffordable' : ''}`;
   function show() {
@@ -147,15 +139,15 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
       setPreview(undefined);
       return;
     }
-    const width = Math.min(innerWidth - 20, mini ? 192 : Math.max(212, rect.width * 1.26));
+    const width = Math.min(innerWidth - 20, mini ? 192 : Math.max(318, rect.width * 1.89));
     const half = width / 2;
     const left = Math.max(half + 10, Math.min(rect.left + rect.width / 2, innerWidth - half - 10));
     const top = mini ? rect.bottom + 5 : rect.top + rect.height / 2;
     setPreview({ left, top, width });
   }
-  function hide() {
+  function hide(delay = 0) {
     clearTimeout(timeout.current);
-    timeout.current = setTimeout(() => setPreview(current => current ? { ...current, closing: true } : current), mini ? 40 : 150);
+    timeout.current = setTimeout(() => setPreview(current => current ? { ...current, closing: true } : current), delay);
   }
   useEffect(() => () => clearTimeout(timeout.current), []);
   useLayoutEffect(() => {
@@ -190,31 +182,48 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
     };
   }, [preview]);
   return <>
-    <div ref={anchor} tabIndex={0} role="group" className={mini ? 'mini-card' : 'table-card'}
+    <div ref={anchor} tabIndex={inline ? undefined : 0} role="group" className={mini || ownerName ? 'mini-card' : 'table-card'}
       data-color={card.color} data-stacked={count > 1 || undefined} data-card={card.id}
       data-unaffordable={unaffordable || undefined} aria-label={description}
-      onPointerEnter={event => { if (event.pointerType !== 'touch') show(); }}
+      onPointerEnter={event => { if (!inline && event.pointerType !== 'touch') show(); }}
       onPointerLeave={event => {
-        if (event.pointerType !== 'touch' && document.activeElement !== anchor.current) hide();
-      }} onFocus={show}
-      onBlur={event => { if (!popup.current?.contains(event.relatedTarget)) hide(); }}
-      onPointerDown={event => { if (event.pointerType === 'touch') event.currentTarget.focus({ preventScroll: true }); }}
+        if (inline || event.pointerType === 'touch' || keyboardPreview.current) return;
+        const button = popup.current?.querySelector('button:not(:disabled)');
+        if (event.relatedTarget === button) return;
+        const tile = event.currentTarget.getBoundingClientRect();
+        const target = button?.getBoundingClientRect();
+        // Only allow a short crossing from the card toward its Buy button.
+        const towardBuy = target && event.clientX > tile.left && event.clientX < tile.right &&
+          ((event.clientY >= tile.bottom - 1 && target.top >= tile.bottom - 1) ||
+           (event.clientY <= tile.top + 1 && target.bottom <= tile.top + 1));
+        hide(towardBuy ? 220 : 0);
+      }} onFocus={() => { if (!inline) { keyboardPreview.current = true; show(); } }}
+      onBlur={event => {
+        keyboardPreview.current = false;
+        if (!popup.current?.contains(event.relatedTarget)) hide();
+      }}
+      onPointerDown={event => {
+        if (inline) return;
+        if (event.pointerType === 'mouse') event.preventDefault();
+        if (event.pointerType === 'touch') event.currentTarget.focus({ preventScroll: true });
+      }}
       onKeyDown={event => {
         if (event.key === 'Tab' && !event.shiftKey && popup.current?.querySelector('button')) {
           event.preventDefault();
           popup.current.querySelector('button')?.focus();
         }
       }}>
-      {mini ? <>{card.numbers.length > 0 && <span>{card.numbers.join('–')}</span>}<Symbol name={card.icon ?? 'landmark'} />
+      {ownerName ? <><BuildingArt source={card.art} /><span aria-hidden="true">∞</span></> : mini ? <>{card.numbers.length > 0 && <span>{card.numbers.join('–')}</span>}<Symbol name={card.icon ?? 'landmark'} />
         {count > 1 && <small>×{count}</small>}</> : <>
         <span className="card-picture">
-          <span className="card-meta"><span className="activation">{card.numbers.length ? card.numbers.join(' · ') : <Symbol name="landmark" />}</span>
+          <span className="card-meta"><span className="activation">{card.numbers.length ? card.numbers.join(' · ') : <span role="img" aria-label={card.persistent ? 'Persistent effect' : 'Single use on purchase'}>{card.persistent ? '∞' : '1'}</span>}</span>
             {count > 1 && <span className="card-count">×{count}</span>}
             <Coin value={cost ?? card.prices[0]} />
           </span>
           <BuildingArt source={card.art} />
         </span>
-        <CardSummary card={card} />
+        <CardSummary card={card} compact={!inline} />
+        {inline && <div className="card-inline-info"><CardInformation card={card} /></div>}
       </>}
     </div>
     {preview && createPortal(<div ref={popup} className={`panel card-preview ${mini ? 'card-preview-mini' : 'card-preview-expanded'}`}
@@ -223,10 +232,11 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
       onAnimationEnd={() => { if (preview.closing) setPreview(undefined); }}>
       {mini ? <CardSummary card={card} /> : <>
         <BuildingArt source={card.art} /><strong>{card.name} <Symbol name={card.icon ?? 'landmark'} /></strong>
+        {ownerName && <p className="modifier-owner">Owned by {ownerName}</p>}
         <CardInformation card={card} />
         {blocked && <p className="muted">{blocked}</p>}
         {buy && cost !== undefined && <button type="button" className="primary card-buy" disabled={!!blocked || preview.closing}
-          onPointerEnter={show} onPointerLeave={hide} onFocus={show}
+          onPointerEnter={show} onPointerLeave={event => { if (!(event.relatedTarget instanceof Node && anchor.current?.contains(event.relatedTarget))) hide(); }} onFocus={show}
           onBlur={event => { if (!anchor.current?.contains(event.relatedTarget)) hide(); }}
           onClick={() => { if (buy()) setPreview(undefined); }}>Buy {card.name} for {cost} {cost === 1 ? 'coin' : 'coins'}</button>}
       </>}

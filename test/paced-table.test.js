@@ -45,6 +45,18 @@ test('market prices and affordability follow the viewing player’s own landmark
   assert.deepEqual(matchView(game, seats, 'b').legalBuilds['radio-tower'], { cost: 12, blocked: undefined });
 });
 
+test('nudges keep separate notices for each sender and refresh repeated nudges', () => {
+  const game = startMatch(['a', 'b', 'c'], () => 0);
+  const room = { game };
+  const connected = new Set(['a', 'b', 'c']);
+  controlsCommand(room, 'b', { type: 'nudge' }, connected);
+  controlsCommand(room, 'c', { type: 'nudge' }, connected);
+  controlsCommand(room, 'b', { type: 'nudge' }, connected);
+  assert.deepEqual(room.controls.nudgeNotices.map(({ senderId, target, id }) => [senderId, target, id]), [
+    ['c', 'a', 2], ['b', 'a', 3],
+  ]);
+});
+
 test('skip uses the current connected majority and preserves the player’s seat', () => {
   const game = startMatch(['a', 'b', 'c', 'd'], () => 0);
   const room = { game };
