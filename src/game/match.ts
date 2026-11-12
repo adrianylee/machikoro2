@@ -29,12 +29,12 @@ export interface ThrowMotion { x: number; y: number }
 export type GameSound = 'roll' | 'income' | 'payment' | 'build' | 'win';
 export interface PlayerStats {
   stolen: number; earned: number; diceTotal: number; diceCount: number;
-  thinking: number; nudges: number; chats: number; built?: number;
+  thinking: number; nudges: number; chats: number; built?: number; rollCount?: number; lastDice?: 1 | 2;
 }
 
 export const COIN_FLIGHT_MS = 1050;
 export const PURCHASE_FLIGHT_MS = 1850;
-export const DICE_REST_MS = 5000;
+export const DICE_REST_MS = 8000;
 export interface DicePresentation { startedAt: number; duration: number; seed: number }
 export interface CoinMovement { from: string; to: string; amount: number }
 
@@ -60,6 +60,9 @@ export interface Match extends OpeningState {
   resolution?: { stage: ResolutionStage | 'build' | 'next-turn' | 'resume-opening' | 'resume-roll'; at: number };
   resolvingStep?: ResolutionStage | 'roll';
   landmarkTriggers?: Record<string, number>;
+  propertyActivations?: Record<string, Record<string, number>>;
+  propertyCoins?: Record<string, Record<string, number>>;
+  propertyCoinsPartial?: boolean;
   stats?: Record<string, PlayerStats>;
   turnStartedAt?: number;
   turnBeganAt?: number;
@@ -77,13 +80,49 @@ export function startMatch(ids: string[], random = Math.random): Match {
     roll: null, turnStartedAt: Date.now(), turnBeganAt: Date.now(), choice: null, extraTurn: false, receivedCoins: false,
     winner: null, version: 0, events: [],
   };
-  for (const id of ids) playerStats(game, id).built = 0;
+  game.propertyCoins = {};
+  for (const id of ids) {
+    const stats = playerStats(game, id);
+    stats.built = 0;
+    stats.rollCount = 0;
+  }
   log(game, game.players[game.activeSeat], 'opens the first building round.');
   return game;
 }
 
 export function playerStats(game: Match, id: string): PlayerStats {
   return (game.stats ??= {})[id] ??= { stolen: 0, earned: 0, diceTotal: 0, diceCount: 0, thinking: 0, nudges: 0, chats: 0 };
+}
+
+export function rollHistory(game: Match, id: string) {
+  const rolls = game.events.filter(event => event.playerId === id && event.sound === 'roll');
+  const diceUsed = rolls.reduce((count, event) => count + (event.text.includes(' + ') ? 2 : 1), 0);
+  return { count: rolls.length, diceUsed, lastDice: rolls.at(-1)?.text.includes(' + ') ? 2 as const : 1 as const };
+}
+
+export function propertyEarnings(game: Match) {
+  if (game.propertyCoins) return game.propertyCoins;
+  const earnings: NonNullable<Match['propertyCoins']> = {};
+  const ids = new Map(Object.values(CARDS).map(card => [card.name, card.id]));
+  for (const event of game.events) {
+    const source = event.payment?.source ?? /^earns \d+ from (.+)\.$/.exec(event.text)?.[1];
+    const cardId = source && ids.get(source);
+    if (!cardId && !event.text.startsWith('uses Park to set every balance')) continue;
+    for (const movement of event.coins ?? []) {
+      if (movement.to === 'bank') continue;
+      const player = earnings[movement.to] ??= {};
+      const id = cardId ?? 'park';
+      player[id] = (player[id] ?? 0) + movement.amount;
+    }
+  }
+  return earnings;
+}
+
+function recordPropertyCoins(game: Match, player: Player, cardId: string, amount: number) {
+  if (!game.propertyCoins && (game.events[0]?.id ?? 1) > 1) game.propertyCoinsPartial = true;
+  const ledger = game.propertyCoins ??= propertyEarnings(game);
+  const playerLedger = ledger[player.id] ??= {};
+  playerLedger[cardId] = (playerLedger[cardId] ?? 0) + amount;
 }
 
 function log(game: Match, player: Player, text: string, sound?: GameSound, details: Pick<GameEvent, 'payment' | 'coins' | 'purchase'> = {}) {
@@ -110,17 +149,19 @@ function countIcon(player: Player, icon: Icon) {
   );
 }
 
-function bank(game: Match, player: Player, amount: number, reason: string) {
+function bank(game: Match, player: Player, amount: number, reason: string, cardId?: string) {
   if (amount <= 0) return;
   credit(player, amount);
+  if (cardId) recordPropertyCoins(game, player, cardId, amount);
   playerStats(game, player.id).earned += amount;
   if (player === activePlayer(game)) game.receivedCoins = true;
   log(game, player, `earns ${amount} from ${reason}.`, 'income', { coins: [{ from: 'bank', to: player.id, amount }] });
 }
 
-function collect(game: Match, payer: Player, recipient: Player, amount: number, reason: string) {
+function collect(game: Match, payer: Player, recipient: Player, amount: number, reason: string, cardId?: string) {
   const paid = transfer(payer, recipient, amount);
   if (paid === 0) return;
+  if (cardId) recordPropertyCoins(game, recipient, cardId, paid);
   if (recipient === activePlayer(game)) game.receivedCoins = true;
   const stats = playerStats(game, recipient.id);
   stats.stolen += paid;
@@ -156,7 +197,7 @@ function finishActivation(game: Match, delay: number) {
       case 'roll-income':
         if (roll.total === effect.total) {
           markLandmark(game, card.id);
-          bank(game, active, effect.coins, card.name);
+          bank(game, active, effect.coins, card.name, card.id);
         }
         break;
       case 'doubles-turn':
@@ -170,7 +211,7 @@ function finishActivation(game: Match, delay: number) {
         if (roll.doubles) {
           markLandmark(game, card.id);
           for (const payer of counterclockwiseOpponents(game.players, game.activeSeat)) {
-            collect(game, payer, active, effect.coins, card.name);
+            collect(game, payer, active, effect.coins, card.name, card.id);
           }
         }
         break;
@@ -185,7 +226,7 @@ function finishActivation(game: Match, delay: number) {
       const effect = card.effect;
       if (effect.kind === 'no-income' && effect.dice === roll.dice.length) {
         markLandmark(game, card.id);
-        bank(game, active, effect.coins, card.name);
+        bank(game, active, effect.coins, card.name, card.id);
       }
     }
   }
@@ -215,15 +256,22 @@ function performRoll(game: Match, dice: 1 | 2, random: () => number, delay: numb
   const roll = rollDice(dice, random);
   game.roll = roll;
   delete game.landmarkTriggers;
+  delete game.propertyActivations;
   game.rollVersion = game.version + 1;
   game.receivedCoins = false;
   const active = activePlayer(game);
+  const stats = playerStats(game, active.id);
+  if (stats.rollCount === undefined) {
+    const history = rollHistory(game, active.id);
+    if (history.diceUsed === stats.diceCount) stats.rollCount = history.count;
+  }
   log(game, active, `rolls ${roll.dice.join(' + ')}${dice === 2 ? ` = ${roll.total}` : ''}.`, 'roll');
   game.throwMotion = motion;
   delete game.diceSelection;
   game.dicePresentation = { startedAt: Date.now(), duration: 3000 + Math.floor(Math.random() * 2001), seed: Math.floor(Math.random() * 2 ** 32) };
   game.dieColors = dice === 2 ? ['pink', 'green'] : [Math.random() < .5 ? 'pink' : 'green'];
-  const stats = playerStats(game, active.id);
+  if (stats.rollCount !== undefined) stats.rollCount++;
+  stats.lastDice = dice;
   stats.diceTotal += roll.total;
   stats.diceCount += dice;
   if (delay) {
@@ -232,7 +280,7 @@ function performRoll(game: Match, dice: 1 | 2, random: () => number, delay: numb
   } else resolveEstablishments(game, undefined, 0);
 }
 
-function resolveEstablishments(game: Match, stage: ResolutionStage | undefined, delay: number) {
+function resolveEstablishments(game: Match, stage: ResolutionStage | undefined, delay: number, preview = false) {
   const active = activePlayer(game);
   const roll = game.roll!;
   const { red, blueAndGreen, purple } = establishmentActivations(game.players, game.activeSeat, roll.total, ESTABLISHMENTS);
@@ -245,27 +293,28 @@ function resolveEstablishments(game: Match, stage: ResolutionStage | undefined, 
   for (const { playerId, cardId, copies } of activations) {
     const owner = game.players.find(player => player.id === playerId)!;
     const card = ESTABLISHMENTS[cardId];
+    if (!preview) ((game.propertyActivations ??= {})[owner.id] ??= {})[cardId] = Date.now();
     const modifier = bonuses.get(card.icon);
     const bonus = Number(!!modifier);
     const effect = card.effect;
     switch (effect.kind) {
       case 'restaurant':
         if (modifier && active.coins > copies * effect.coins) markLandmark(game, modifier);
-        collect(game, active, owner, copies * (effect.coins + bonus), card.name);
+        collect(game, active, owner, copies * (effect.coins + bonus), card.name, card.id);
         break;
       case 'bank':
         if (modifier) markLandmark(game, modifier);
-        bank(game, owner, copies * (effect.coins * (effect.per ? countIcon(owner, effect.per) : 1) + bonus), card.name);
+        bank(game, owner, copies * (effect.coins * (effect.per ? countIcon(owner, effect.per) : 1) + bonus), card.name, card.id);
         break;
       case 'collect':
         for (const payer of counterclockwiseOpponents(game.players, game.activeSeat)) {
-          collect(game, payer, owner, copies * effect.coins, card.name);
+          collect(game, payer, owner, copies * effect.coins, card.name, card.id);
         }
         break;
       case 'take-half':
         for (let i = 0; i < copies; i++) {
           for (const payer of counterclockwiseOpponents(game.players, game.activeSeat)) {
-            collect(game, payer, owner, eligibleHalf(payer), card.name);
+            collect(game, payer, owner, eligibleHalf(payer), card.name, card.id);
           }
         }
         break;
@@ -274,6 +323,7 @@ function resolveEstablishments(game: Match, stage: ResolutionStage | undefined, 
         break;
     }
   }
+  if (preview) return;
   if (exchanges && game.players.some(player => player !== active && Object.keys(player.establishments).length > 0)) {
     delete game.resolution;
     game.phase = 'choice';
@@ -283,6 +333,18 @@ function resolveEstablishments(game: Match, stage: ResolutionStage | undefined, 
     if (stage === undefined) finishActivation(game, 0);
     else scheduleResolution(game, RESOLUTION_STAGES[RESOLUTION_STAGES.indexOf(stage) + 1], delay);
   }
+}
+
+export function establishmentPayouts(game: Match, playerId: string) {
+  return Array.from({ length: 12 }, (_, index) => {
+    const trial: Match = {
+      ...game, players: game.players.map(player => ({ ...player })),
+      roll: { dice: [1], total: index + 1, doubles: false },
+      stats: {}, events: [], propertyCoins: {}, landmarkTriggers: {},
+    };
+    resolveEstablishments(trial, undefined, 0, true);
+    return trial.stats?.[playerId]?.earned ?? 0;
+  });
 }
 
 export function advanceResolution(game: Match, delay: number) {
@@ -400,6 +462,7 @@ function landmarkBuilt(game: Match, player: Player, card: Landmark) {
         const difference = amount - city.coins;
         if (difference) coins.push({ from: difference > 0 ? 'bank' : city.id, to: difference > 0 ? city.id : 'bank', amount: Math.abs(difference) });
         playerStats(game, city.id).earned += Math.max(0, difference);
+        if (difference > 0) recordPropertyCoins(game, city, card.id, difference);
         city.coins = amount;
       }
       log(game, player, `uses Park to set every balance to ${amount} coins.`, undefined, { coins });
@@ -407,13 +470,13 @@ function landmarkBuilt(game: Match, player: Player, card: Landmark) {
     }
     case 'build-take-half':
       for (const payer of counterclockwiseOpponents(game.players, game.activeSeat)) {
-        collect(game, payer, player, eligibleHalf(payer), card.name);
+        collect(game, payer, player, eligibleHalf(payer), card.name, card.id);
       }
       break;
     case 'build-collect':
       for (const payer of counterclockwiseOpponents(game.players, game.activeSeat)) {
         const count = effect.per === 'landmarks' ? payer.landmarks.length : effect.per ? countIcon(payer, effect.per) : 1;
-        collect(game, payer, player, effect.coins * count, card.name);
+        collect(game, payer, player, effect.coins * count, card.name, card.id);
       }
       break;
   }
@@ -464,7 +527,7 @@ function performBuild(game: Match, cardId: string | null, delay: number) {
     }
   } else {
     for (const { card: landmark } of ownedLandmarks(game)) {
-      if (landmark.effect.kind === 'pass-income') bank(game, active, landmark.effect.coins, landmark.name);
+      if (landmark.effect.kind === 'pass-income') bank(game, active, landmark.effect.coins, landmark.name, landmark.id);
     }
   }
   const hasPayout = game.events.some(event => event.id > previous && event.coins?.length);

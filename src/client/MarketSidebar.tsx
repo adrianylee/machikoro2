@@ -1,9 +1,13 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { compareStanding, TABLE_CARDS } from '../game/view.ts';
-import type { GameView } from '../game/view.ts';
-import { BuildingArt } from './BuildingArt.tsx';
+import type { GameView, TableCard } from '../game/view.ts';
 import { Balance, CardTile, Symbol } from './Cards.tsx';
+
+const bank: TableCard = {
+  id: 'table-bank', name: 'Bank', color: 'landmark', numbers: [], prices: [], copies: 1,
+  art: '/table-bank.webp', effect: 'Gives 5 coins to each player at the start of the game. Maintains the rules.',
+};
 
 export type SeatColors = Readonly<Record<string, string>>;
 
@@ -64,7 +68,7 @@ export function MarketSidebar({ game, self, colors }: { game: GameView; self: st
       </div>
     </section>
     <section className="panel table-bank" aria-label="Bank" data-motion-anchor="bank">
-      <h2>Bank</h2><div className="bank-card"><BuildingArt source="/table-bank.webp" /><Symbol name="bag" /></div>
+      <CardTile card={bank} count={1} />
     </section>
   </div>;
 }

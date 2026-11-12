@@ -55,8 +55,14 @@ test('table presents market, cities and readable card details on desktop and a p
   await expect(modifiers.locator('.modifier-pulse')).toBeVisible();
   await expect(modifiers.getByRole('group', { name: 'Temple' })).toBeVisible();
   await page.screenshot({ path: info.outputPath('table-desktop.png'), fullPage: true });
-  const bank = page.getByRole('region', { name: 'Bank' });
+  const bank = page.getByRole('region', { name: 'Bank', exact: true });
   await expect(bank).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await bank.getByRole('group', { name: 'Bank', exact: true }).hover();
+  const bankDetails = page.getByRole('region', { name: 'Bank details' });
+  await expect(bankDetails).toContainText('Maintains the rules.');
+  await expect(bankDetails).toHaveCSS('pointer-events', 'none');
+  await page.getByRole('heading', { name: 'Market', exact: true }).hover();
+  await expect(bankDetails).toBeHidden();
   const city = page.getByRole('region', { name: 'Player city' });
   const [marketBox, cityBox, bankBox, modifiersBox] = await Promise.all(
     [market, city, bank, modifiers].map(panel => panel.boundingBox()),
@@ -64,7 +70,7 @@ test('table presents market, cities and readable card details on desktop and a p
   const sidebarGap = bankBox!.y - (modifiersBox!.y + modifiersBox!.height);
   expect(sidebarGap).toBeGreaterThan(0);
   expect(cityBox!.y - (marketBox!.y + marketBox!.height)).toBeCloseTo(sidebarGap);
-  await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(245, 231, 208)');
+  await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(23, 23, 25)');
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   await expect(bank).toHaveCSS('background-color', 'rgb(36, 37, 39)');
   await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(23, 23, 25)');
@@ -120,6 +126,7 @@ test('table presents market, cities and readable card details on desktop and a p
   await expect(city.locator('.table-card')).toHaveCount(1);
   await vineyard.hover();
   await expect(vineyard.getByText(/copies in the deck/)).toBeVisible();
+  await expect(vineyard.getByText(/Coins this game: 0/)).toBeVisible();
   await expect(page.getByRole('region', { name: 'Vineyard details' })).toHaveCount(0);
   const high = filters.getByRole('button', { name: 'Two dice', exact: true });
   await high.click();

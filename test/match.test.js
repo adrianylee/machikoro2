@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CARDS } from '../src/game/catalog.ts';
-import { applyMatchAction, buildOffer, startMatch } from '../src/game/match.ts';
+import { applyMatchAction, buildOffer, establishmentPayouts, startMatch } from '../src/game/match.ts';
+
+import { matchView } from '../src/game/view.ts';
 
 function match() {
   const game = startMatch(['a', 'b', 'c'], () => 0);
@@ -26,6 +28,40 @@ test('catalog has all 106 base-game cards with the verified deck counts', () => 
   }
   assert.equal(CARDS['sushi-bar'].copies, 5);
   assert.equal(CARDS['city-hall'], undefined);
+});
+
+test('payout forecasts match actual stacked collections without changing the game', () => {
+  const game = match();
+  game.players[0].coins = 3;
+  game.players[0].establishments.bakery = 1;
+  game.players[1].establishments.cafe = 2;
+  game.players[2].establishments.cafe = 1;
+  const before = structuredClone(game);
+  assert.equal(establishmentPayouts(game, 'a')[2], 2);
+  assert.equal(establishmentPayouts(game, 'b')[2], 1);
+  assert.equal(establishmentPayouts(game, 'c')[2], 2);
+  assert.deepEqual(game, before);
+  roll(game, 3);
+  assert.equal(game.propertyCoins.b.cafe, 1);
+  assert.equal(game.propertyCoins.c.cafe, 2);
+  assert.ok(game.propertyActivations.b.cafe);
+});
+
+test('roll statistics count throws and remember dice per player', () => {
+  const game = match();
+  const seats = game.players.map(({ id }) => ({ id, name: id }));
+  assert.equal(matchView(game, seats).diceSelection, 1);
+  roll(game, 5, 6);
+  applyMatchAction(game, 'a', { type: 'build', cardId: null });
+  assert.equal(matchView(game, seats).diceSelection, 1);
+  roll(game, 1);
+  applyMatchAction(game, 'b', { type: 'build', cardId: null });
+  roll(game, 1);
+  applyMatchAction(game, 'c', { type: 'build', cardId: null });
+  assert.equal(matchView(game, seats).diceSelection, 2);
+  roll(game, 5);
+  assert.equal(game.stats.a.rollCount, 2);
+  assert.equal(game.stats.a.diceTotal / game.stats.a.rollCount, 8);
 });
 
 test('Cafés collect in reverse seat order before the roller earns from Bakery', () => {

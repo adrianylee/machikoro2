@@ -4,7 +4,7 @@ import type { Lobby } from './room.ts';
 
 const celebrationFiles = ['/confetti-pop-sound-effect.mp3', '/confetti-pop.mp3'] as const;
 
-type Cue = 'roll' | 'income' | 'taken' | 'spent' | 'win' | 'nudge';
+type Cue = 'roll' | 'income' | 'taken' | 'spent' | 'win' | 'nudge' | 'activation';
 const cues: Record<Cue, readonly [frequency: number, start: number, length: number][]> = {
   roll: [[210, 0, .07], [155, .20, .08], [230, .39, .06], [160, .75, .08], [260, 1.08, .06], [180, 1.34, .06]],
   income: [[740, 0, .09], [988, .055, .15], [1319, .11, .16]],
@@ -12,6 +12,7 @@ const cues: Record<Cue, readonly [frequency: number, start: number, length: numb
   spent: [[535, 0, .06], [440, .06, .07], [330, .13, .10]],
   win: [[392, 0, .17], [494, .14, .17], [587, .28, .16], [784, .42, .5], [988, .42, .5], [1175, .42, .5]],
   nudge: [[240, 0, .08], [320, .07, .08]],
+  activation: [[85, 0, .12]],
 };
 
 type AudioRef = RefObject<AudioContext | null>;
@@ -85,11 +86,12 @@ export function useButtonFeedback(enabled: boolean, audio: AudioRef) {
   }, [enabled, audio]);
 }
 
-export function useGameSound(enabled: boolean, lobby: Lobby | null, audio: AudioRef) {
+export function useGameSound(enabled: boolean, lobby: Lobby | null, audio: AudioRef, cityId: string) {
   const celebrationCursor = useRef<number | undefined>(undefined);
   const clips = useRef(new Map<number, Promise<AudioBuffer>>());
   const heard = useRef<number | undefined>(undefined);
   const nudged = useRef<string | undefined>(undefined);
+  const lastGame = useRef<Lobby['game']>(undefined);
   const events = lobby?.game?.events;
   const last = events?.at(-1)?.id;
   const nudge = lobby?.controls?.nudge;
@@ -123,6 +125,9 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null, audio: Audio
   }, [celebrations, enabled, lobby]);
 
   useEffect(() => {
+    const previousGame = lastGame.current;
+    const game = lobby?.game;
+    lastGame.current = game;
     const previous = heard.current;
     const previousNudge = nudged.current;
     const nextNudge = nudge ? `${nudge.at ?? nudge.turn}:${nudge.count}` : '';
@@ -133,6 +138,14 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null, audio: Audio
     const recent = previous !== undefined && last !== undefined && last > previous
       ? events?.filter(event => event.id > previous) ?? [] : [];
     const sounds = new Set<Cue>();
+    const newActivation = (current?: Record<string, number>, prior?: Record<string, number>) =>
+      Object.entries(current ?? {}).some(([id, at]) => at !== prior?.[id] && (game?.serverNow ?? Date.now()) - at < 600);
+    const ownedLandmarks = game?.cities.find(city => city.id === cityId)?.landmarks ?? [];
+    if (previousGame && (newActivation(game?.propertyActivations?.[cityId], previousGame.propertyActivations?.[cityId]) ||
+      ownedLandmarks.some(({ id }) => {
+        const at = game?.landmarkTriggers?.[id];
+        return at !== undefined && at !== previousGame.landmarkTriggers?.[id] && (game?.serverNow ?? Date.now()) - at < 600;
+      }))) sounds.add('activation');
     for (const event of recent) {
       if (event.sound === 'roll') sounds.add('roll');
       if (event.playerId === self) {
@@ -149,10 +162,10 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null, audio: Audio
         const gain = context.createGain();
         const stretch = sound === 'roll' ? (lobby?.game?.dicePresentation?.duration ?? 1650) / 1650 : 1;
         const start = context.currentTime + offset * stretch;
-        note.type = sound === 'roll' || sound === 'taken' ? 'triangle' : 'sine';
+        note.type = sound === 'roll' || sound === 'taken' || sound === 'activation' ? 'triangle' : 'sine';
         note.frequency.value = frequency;
         gain.gain.setValueAtTime(.001, start);
-        gain.gain.exponentialRampToValueAtTime(sound === 'nudge' ? .022 : .058, start + .012);
+        gain.gain.exponentialRampToValueAtTime(sound === 'activation' ? .018 : sound === 'nudge' ? .022 : .058, start + .012);
         gain.gain.exponentialRampToValueAtTime(.001, start + length);
         note.connect(gain);
         gain.connect(context.destination);
@@ -160,5 +173,5 @@ export function useGameSound(enabled: boolean, lobby: Lobby | null, audio: Audio
         note.stop(start + length);
       }
     }
-  }, [enabled, events, last, lobby, nudge, self]);
+  }, [cityId, enabled, events, last, lobby, nudge, self]);
 }

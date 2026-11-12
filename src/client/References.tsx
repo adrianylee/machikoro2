@@ -16,9 +16,8 @@ const steps = [
 ] as const;
 const groups = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]];
 
-function percent(dice: 1 | 2, roll: number) {
-  const chance = dice === 1 ? (roll <= 6 ? 1 / 6 : 0) : (roll > 1 ? (6 - Math.abs(7 - roll)) / 36 : 0);
-  return chance ? `${(100 * chance).toFixed(1)}%` : '0%';
+function probability(dice: 1 | 2, roll: number) {
+  return dice === 1 ? (roll <= 6 ? 1 / 6 : 0) : (roll > 1 ? (6 - Math.abs(7 - roll)) / 36 : 0);
 }
 
 function Odds({ game, self }: { game?: GameView; self: string }) {
@@ -31,23 +30,39 @@ function Odds({ game, self }: { game?: GameView; self: string }) {
     .filter(({ card }) => card.color === 'blue' || (ownTurn ? card.color !== 'red' : card.color === 'red'));
   const rolledCount = game?.dice?.length;
   // The Worker advances past the roll only after the dice have settled.
-  const revealed = game && game.phase !== 'opening' && game.resolutionStage !== 'roll';
+  const revealed = game && !waitingForRoll && game.phase !== 'opening' && game.resolutionStage !== 'roll';
   const total = revealed ? game.dice?.reduce((sum, die) => sum + die, 0) : undefined;
 
-  return <div className="odds-tables">
+  const possible = groups.flat().map(roll => ({
+    roll, cards: eligible.filter(({ card }) => card.numbers.includes(roll)),
+    chance: selected ? probability(selected, roll) : 0,
+  }));
+  const payoutChance = possible.reduce((sum, { chance, cards }) => sum + (cards.length ? chance : 0), 0);
+  const expected = possible.reduce((sum, { chance, roll }) => sum + chance * (game?.oddsPayouts?.[roll - 1] ?? 0), 0);
+
+  return <details open>
+    <summary>Dice odds {waitingForRoll && <span className="odds-stats">
+      <span aria-label={`Percentage of payout: ${(payoutChance * 100).toFixed(1)}%`}>
+        {(payoutChance * 100).toFixed(1)}%<span className="panel odds-stat-tooltip" aria-hidden="true">Percentage of payout</span>
+      </span>
+      <span aria-label={`Expected value: ${expected.toFixed(1)} coins`}>
+        {expected.toFixed(1)} <span className="coin" aria-hidden="true">¢</span><span className="panel odds-stat-tooltip" aria-hidden="true">Expected value</span>
+      </span>
+    </span>}</summary>
+    <div className="odds-tables">
     {groups.map(rolls => <table className="odds-table" key={rolls[0]} aria-label={`Odds for rolls ${rolls[0]} to ${rolls[5]}`}>
       <thead><tr><th scope="col">Roll</th>{rolls.map(roll => <th scope="col" key={roll} data-hit={total === roll || undefined}>{roll}</th>)}</tr></thead>
       <tbody>{([1, 2] as const).map(dice => <tr key={dice}>
         <th scope="row" aria-label={dice === 1 ? 'One die' : 'Two dice'}><DiceGlyph count={dice} /></th>
         {rolls.map(roll => {
-          const chance = percent(dice, roll);
-          const cards = selected === dice && chance !== '0%' ? eligible.filter(({ card }) => card.numbers.includes(roll)) : [];
+          const chance = probability(dice, roll);
+          const cards = selected === dice && chance > 0 ? possible[roll - 1].cards : [];
           const activates = cards.length > 0;
           const tooltip = `${tooltipPrefix}-odds-${roll}`;
-          return <td key={roll} data-zero={chance === '0%' || undefined} data-payout={activates || undefined}
+          return <td key={roll} data-zero={!chance || undefined} data-payout={activates || undefined}
             data-hit={total === roll && rolledCount === dice || undefined} tabIndex={activates ? 0 : undefined}
             aria-describedby={activates ? tooltip : undefined}>
-            {chance}
+            {chance ? `${(100 * chance).toFixed(1)}%` : '0%'}
             {activates && <div className="panel odds-tooltip" id={tooltip} role="tooltip"
               data-placement={dice === 1 ? 'above' : roll <= 6 ? 'above-both' : 'below'}>
               {cards.map(({ card, count }) => <div className="odds-tooltip-card" key={card.id}>
@@ -58,17 +73,15 @@ function Odds({ game, self }: { game?: GameView; self: string }) {
         })}
       </tr>)}</tbody>
     </table>)}
-  </div>;
+    </div>
+  </details>;
 }
 
 export function References({ game, self }: { game?: GameView; self: string }) {
   const stage = game?.phase === 'resolve' ? (game.resolutionStage ?? 'build') : game?.phase === 'choice'
     ? (game.choice?.kind === 'move' ? 'landmarks' : 'purple') : game?.phase === 'opening' ? 'build' : game?.phase;
   return <section className="panel reference" aria-label="Table references">
-    <details open>
-      <summary>Dice odds</summary>
-      <Odds game={game} self={self} />
-    </details>
+    <Odds game={game} self={self} />
     <details ref={element => { if (element && !element.dataset.initialized) { element.open = true; element.dataset.initialized = 'true'; } }}>
       <summary>Turn order</summary>
       <ol className="turn-reference">{steps.map(([key, label, icon, description]) => <li key={key}

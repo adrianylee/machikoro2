@@ -14,7 +14,7 @@ test('dice odds mark personal activations for the current roller and selected di
       ] },
       { id: 'ren', name: 'Ren', coins: 5, landmarks: [], establishments: [] },
     ],
-    legalBuilds: {},
+    legalBuilds: {}, oddsPayouts: [3, 0, 0, 0, 4, 0, 3, 0, 0, 0, 0, 0],
   };
   let emit: () => void;
   await page.routeWebSocket(`**/api/rooms/${roomId}`, socket => {
@@ -31,6 +31,8 @@ test('dice odds mark personal activations for the current roller and selected di
     (roll <= 6 ? low : high).getByRole('row').nth(dice).locator('td').nth((roll - 1) % 6);
   const highlights = page.locator('.odds-table td[data-payout]');
   await expect(highlights).toHaveCount(2);
+  await expect(page.getByLabel('Percentage of payout: 33.3%')).toBeVisible();
+  await expect(page.getByLabel('Expected value: 1.2 coins')).toBeVisible();
   await expect(cell(1, 1)).toHaveAttribute('data-payout', 'true');
   await expect(cell(1, 5)).toHaveAttribute('data-payout', 'true');
   await expect(cell(1, 7)).toHaveText('0%');
@@ -42,6 +44,8 @@ test('dice odds mark personal activations for the current roller and selected di
   game.diceSelection = 2;
   emit!();
   await expect(highlights).toHaveCount(2);
+  await expect(page.getByLabel('Percentage of payout: 27.8%')).toBeVisible();
+  await expect(page.getByLabel('Expected value: 0.9 coins')).toBeVisible();
   await expect(cell(2, 1)).not.toHaveAttribute('data-payout', 'true');
   await cell(2, 5).hover();
   await expect(page.getByRole('tooltip')).toHaveAttribute('data-placement', 'above-both');
@@ -67,4 +71,9 @@ test('dice odds mark personal activations for the current roller and selected di
   await expect(high.getByRole('columnheader', { name: '7', exact: true })).toHaveAttribute('data-hit', 'true');
   await expect(cell(2, 7)).toHaveCSS('background-color', 'rgb(255, 210, 48)');
   await expect(cell(1, 7)).not.toHaveAttribute('data-hit', 'true');
+  game.phase = 'roll';
+  game.resolutionStage = undefined;
+  game.activePlayerId = 'ren';
+  emit!();
+  await expect(page.locator('.odds-table [data-hit]')).toHaveCount(0);
 });
