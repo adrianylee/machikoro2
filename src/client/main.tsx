@@ -197,7 +197,8 @@ function RoomView({ id, sound }: { id: string; sound: boolean }) {
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="table-grid">
       {lobby.game ? <GameTable game={lobby.game} self={lobby.self} online={status === 'online'}
-        send={action => send({ ...action, version: lobby.game!.version })} /> : <section className="panel room-stage">
+        send={action => send({ ...action, version: lobby.game!.version })}
+        rematch={host ? () => send({ type: 'rematch', version: lobby.game!.version }) : undefined} /> : <section className="panel room-stage">
         <img src="/art/radio-tower.webp" alt="" />
         <div><h2>Gather your players</h2><p>Share the invite link with friends. Guests mark ready before the host starts.</p>
           {host ? <button className="primary lobby-action" disabled={!canStart} onClick={() => send({ type: 'start' })}>Start game</button>
@@ -208,8 +209,6 @@ function RoomView({ id, sound }: { id: string; sound: boolean }) {
       <aside className="table-sidebar">
         <section className="panel roster">
           <h2>Players</h2>
-          {host && lobby.game?.phase === 'finished' && <button className="primary lobby-action"
-            disabled={status !== 'online'} onClick={() => send({ type: 'rematch', version: lobby.game!.version })}>Play again</button>}
           <ul>
             {lobby.players.map((seat, index) => <li key={seat.id} style={{ borderColor: colors[seat.color ?? index] }}>
               <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>

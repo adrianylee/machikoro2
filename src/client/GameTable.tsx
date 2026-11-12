@@ -39,17 +39,20 @@ function CardFace({ card, count, cost, open }: { card: TableCard; count: number;
       <span>{card.numbers.length ? card.numbers.join(' · ') : 'Landmark'}</span>
       {count > 1 && <span className="card-count">×{count}</span>}
     </span>
-    {card.art ? <img src={card.art} alt="" loading="lazy" /> : <span className="card-art-pending" aria-hidden="true" />}
+    {card.art ? <img src={card.art} alt="" decoding="async" /> : <span className="card-art-pending" aria-hidden="true" />}
     <strong>{card.name}</strong>
     {cost !== undefined && <span className="card-cost">{cost} {cost === 1 ? 'coin' : 'coins'}</span>}
   </button>;
 }
 
-export function GameTable({ game, self, online, send }: {
+const dicePips = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]];
+
+export function GameTable({ game, self, online, send, rematch }: {
   game: GameView;
   self: string;
   online: boolean;
   send: (action: MatchAction) => boolean;
+  rematch?: () => boolean;
 }) {
   const [cityId, setCityId] = useState(self);
   const [selection, setSelection] = useState<{ cardId: string; market: boolean } | null>(null);
@@ -68,14 +71,17 @@ export function GameTable({ game, self, online, send }: {
   }
 
   return <div className="game-stage">
-    {game.phase === 'finished' ? <section className="panel turn-controls" aria-label="Game result"><h2>{winner?.name ?? 'A player'} wins!</h2></section> : <section className="panel turn-controls" aria-label="Turn controls">
+    {game.phase === 'finished' ? <section className="panel turn-controls" aria-label="Game result"><h2>{winner?.name ?? 'A player'} wins!</h2>
+      {rematch && <button className="primary" disabled={!online} onClick={rematch}>Play again</button>}</section> : <section className="panel turn-controls" aria-label="Turn controls">
       <div>
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
         {canBuild && <p className="muted">{game.phase === 'opening' ? 'Build an establishment or pass.' : 'Build one card or pass.'}</p>}
       </div>
       {game.turnStartedAt && <TurnClock start={game.turnStartedAt} />}
       {!!game.dice?.length && <div key={game.rollVersion ?? game.dice.join("-")} className="dice-display" aria-label={`Rolled ${game.dice.join(' and ')}`}>
-        {game.dice.map((die, index) => <span key={index}>{die}</span>)}
+        {game.dice.map((die, index) => <span key={index} className="die-face" aria-hidden="true">
+          {dicePips[die].map(pip => <i key={pip} style={{ gridArea: `${Math.floor(pip / 3) + 1} / ${pip % 3 + 1}` }} />)}
+        </span>)}
       </div>}
       {online && isActive && game.phase === 'roll' && <div className="turn-buttons">
         <button className="secondary" onClick={() => send({ type: 'roll', dice: 1 })}>Roll 1 die</button>

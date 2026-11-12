@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import { expect, test } from '@playwright/test';
 
 test('room state and credentials survive a Worker process restart', async ({ page, browser }, info) => {
-  test.setTimeout(55_000);
+  test.setTimeout(90_000);
   const listener = createServer();
   listener.listen(0, '127.0.0.1');
   await once(listener, 'listening');
@@ -18,19 +18,24 @@ test('room state and credentials survive a Worker process restart', async ({ pag
   let output = '';
 
   async function start() {
+    output = '';
     child = spawn(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'dev', '--ip', '127.0.0.1',
       '--port', String(port), '--persist-to', persistence, '--inspector-port', '0'],
     { env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout?.on('data', chunk => { output += chunk; });
     child.stderr?.on('data', chunk => { output += chunk; });
-    await expect.poll(async () => {
-      if (child?.exitCode != null) throw new Error(output);
-      try {
-        return (await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(500) })).status;
-      } catch {
-        return 0;
-      }
-    }, { timeout: 16000 }).toBe(200);
+    try {
+      await expect.poll(async () => {
+        if (child?.exitCode != null) throw new Error(`Worker exited with code ${child.exitCode}.`);
+        try {
+          return (await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(1000) })).status;
+        } catch {
+          return 0;
+        }
+      }, { timeout: 30000 }).toBe(200);
+    } catch (cause) {
+      throw new Error(`The test Worker did not become healthy.\n${output.slice(-6000)}`, { cause });
+    }
   }
 
   async function stop() {
