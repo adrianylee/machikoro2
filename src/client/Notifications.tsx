@@ -8,6 +8,18 @@ function TimedNotice({ at, children }: { at: number; children: ReactNode }) {
   return <div className="panel notification timed-notice" style={{ animationDelay: `-${offset}ms` }}>{children}</div>;
 }
 
+function NudgeNotice({ age, name }: { age: number; name: string }) {
+  const [initialAge] = useState(age);
+  const [visible, setVisible] = useState(initialAge < 3000);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(false), Math.max(0, 3000 - initialAge));
+    return () => clearTimeout(timer);
+  }, [initialAge]);
+  return visible && <div className="panel notification nudge-notice" style={{ animationDelay: `-${initialAge}ms` }}>
+    <strong>{name}</strong> nudged you
+  </div>;
+}
+
 export function Notifications({ lobby, send }: { lobby: Lobby; send: (action: RoomAction) => boolean }) {
   const [now, setNow] = useState(Date.now);
   const nudge = lobby.controls?.nudge;
@@ -50,9 +62,9 @@ export function Notifications({ lobby, send }: { lobby: Lobby; send: (action: Ro
       </div>
     </section>}
     {result && result.at + 8000 > now && <TimedNotice key={result.revision} at={result.at}>{result.text}</TimedNotice>}
-    {nudge?.target === lobby.self && <div className="panel notification nudge-notice" key={`${nudge.at ?? nudge.turn}:${nudge.count}`}>
-      The table nudged you
-    </div>}
+    {(lobby.controls?.nudgeNotices ?? []).filter(item => item.target === lobby.self).map(item =>
+      <NudgeNotice key={item.id} name={names.get(item.senderId) ?? 'A player'}
+        age={Math.max(0, (lobby.game?.serverNow ?? Date.now()) - item.at)} />)}
     {payments.map(event => <TimedNotice key={event.id} at={event.payment!.at}>
       <strong>{names.get(event.playerId) ?? 'A player'}</strong> triggered <strong>{event.payment!.source}</strong> and took <Coin value={event.payment!.amount} /> {event.payment!.amount === 1 ? 'coin' : 'coins'} from you!
     </TimedNotice>)}

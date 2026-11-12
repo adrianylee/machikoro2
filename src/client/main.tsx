@@ -7,7 +7,6 @@ import type { Lobby, RoomAction } from './room.ts';
 import { GameTable, tablePhase, TurnClock } from './GameTable.tsx';
 import { Notifications } from './Notifications.tsx';
 import { References } from './References.tsx';
-import { Balance } from './Cards.tsx';
 import '@fontsource-variable/dm-sans';
 import '@fontsource/dm-serif-text/400.css';
 import './style.css';
@@ -212,7 +211,7 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
     <div className="table-grid">
       {lobby.game ? <GameTable game={lobby.game} self={lobby.self} cityId={cityId} online={status === 'online'}
         send={action => send({ ...action, version: lobby.game!.version })}
-        controls={lobby.controls}
+        controls={lobby.controls} colors={Object.fromEntries(lobby.players.map((seat, index) => [seat.id, colors[seat.color ?? index]]))}
         rematch={() => send({ type: 'rematch', version: lobby.game!.version })}
         congratulate={() => send({ type: 'congratulate', version: lobby.game!.version })} /> : <section className="panel room-stage">
         <img src="/art/radio-tower.webp" alt="" />
@@ -222,7 +221,7 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
       </section>}
       <aside className="table-sidebar">
         <section className="panel roster">
-          <div className="roster-heading"><h2>Players</h2>
+          <div className="roster-heading"><h2>Player order</h2>
             {active && lobby.game?.phase !== 'finished' && <button type="button" className="secondary roster-nudge"
               disabled={active.id === lobby.self || status !== 'online'} onClick={() => sendNudge(active.id)}>
               Nudge: {active.name}{nudge?.target === active.id && <span className="nudge-counter" aria-hidden="true" key={nudge.at}>×{nudge.count}</span>}
@@ -231,13 +230,11 @@ function RoomView({ id, sound, notice }: { id: string; sound: boolean; notice: s
           <ul>
             {playerOrder.map((id, index) => {
               const seat = lobby.players.find(player => player.id === id)!;
-              const city = lobby.game?.cities.find(entry => entry.id === id);
               return <li key={seat.id} data-motion-anchor={id === lobby.self && cityId !== lobby.self ? id : undefined} data-active={lobby.game?.phase !== 'finished' && lobby.game?.activePlayerId === id || undefined}
                 style={{ '--player-color': colors[seat.color ?? index] } as CSSProperties}>
               <span className="seat-number" aria-label={`Turn order ${index + 1}`}>{index + 1}</span>
               <strong>{seat.name}{seat.id === lobby.self ? ' (you)' : ''}</strong>
               <span>{seat.id === lobby.hostId ? 'Host · ' : ''}{seat.online ? 'Online' : 'Away'}</span>
-              {city && <div className="roster-stats"><Balance amount={city.coins} /> <span>{city.landmarks.length}/3</span></div>}
               {host && !lobby.game && seat.id !== lobby.self && <button className="remove-seat" type="button"
                 aria-label={`Remove ${seat.name}`} onClick={() => { setRemoveId(seat.id); removal.current?.showModal(); }}>Remove</button>}
             </li>; })}

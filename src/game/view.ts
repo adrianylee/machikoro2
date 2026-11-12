@@ -1,4 +1,4 @@
-import { CARDS } from './catalog.ts';
+import { CARDS, isPersistentLandmark } from './catalog.ts';
 import type { Card, Icon } from './catalog.ts';
 import { buildOffer } from './match.ts';
 import type { Choice, GameEvent, Match, PlayerStats, ResolutionStage, ThrowMotion, DicePresentation } from './match.ts';
@@ -15,6 +15,7 @@ export interface TableCard {
   copies: number;
   effect: string;
   art?: string;
+  persistent?: boolean;
 }
 
 export interface TableCity {
@@ -37,6 +38,7 @@ export interface GameView {
   dieColors?: ('pink' | 'green')[];
   throwMotion?: ThrowMotion;
   resolutionStage?: ResolutionStage | 'roll';
+  landmarkTriggers?: Record<string, number>;
   turnOrder?: string[];
   stats?: Record<string, PlayerStats>;
   drawn?: boolean;
@@ -92,8 +94,13 @@ export const TABLE_CARDS: Readonly<Record<string, TableCard>> = Object.fromEntri
     prices: card.row === 'landmarks' ? card.cost : [card.cost],
     icon: card.row === 'landmarks' ? undefined : card.icon,
     art: `/art/${card.id}.webp`,
+    persistent: card.row === 'landmarks' ? isPersistentLandmark(card) : undefined,
   },
 ]));
+
+export function compareStanding(a: TableCity, b: TableCity) {
+  return b.landmarks.length - a.landmarks.length || b.coins - a.coins;
+}
 
 export function matchView(game: Match, seats: { id: string; name: string }[], viewerId?: string): GameView {
   const active = game.players[game.activeSeat];
@@ -105,6 +112,7 @@ export function matchView(game: Match, seats: { id: string; name: string }[], vi
     phase: game.phase, activePlayerId: active.id, openingRound: game.openingRound,
     dice: game.roll?.dice ?? null, rollVersion: game.rollVersion, turnStartedAt: game.turnStartedAt, turnBeganAt: game.turnBeganAt, supply, legalBuilds,
     version: game.version, choice: game.choice, winner: game.winner, events: game.events,
+    landmarkTriggers: game.landmarkTriggers,
     dieColors: game.dieColors, throwMotion: game.throwMotion, resolutionStage: game.resolvingStep,
     dicePresentation: game.dicePresentation, diceSelection: game.diceSelection, serverNow: Date.now(),
     turnOrder: [...game.players.slice(game.startingSeat), ...game.players.slice(0, game.startingSeat)].map(player => player.id),

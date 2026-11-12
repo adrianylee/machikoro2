@@ -50,7 +50,7 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
     await nudge.click();
     await expect(nudge.locator('.nudge-counter')).toHaveText('×1');
     await nudge.click();
-    await expect(starting.getByText('The table nudged you')).toBeVisible();
+    await expect(starting.locator('.nudge-notice')).toHaveText(`${second === page ? 'Aki' : 'Ren'} nudged you`);
     await expect(nudge.locator('.nudge-counter')).toHaveText('×2');
     await expect(starting.locator('.nudge-counter')).toHaveCount(0);
     await second.getByRole('button', { name: 'Table Controls' }).click();

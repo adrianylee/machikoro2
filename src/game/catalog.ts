@@ -46,6 +46,13 @@ export interface Landmark {
 export type Card = Establishment | Landmark;
 export type Catalog = Readonly<Record<string, Card>>;
 
+export function isPersistentLandmark(card: Landmark) {
+  switch (card.effect.kind) {
+    case 'build-collect': case 'build-take-half': case 'equalize': case 'extra-turn': case 'win': return false;
+    default: return true;
+  }
+}
+
 function establishment(
   id: string, name: string, color: Establishment['color'], numbers: number[],
   cost: number, copies: Establishment['copies'], icon: Icon, effect: EstablishmentEffect,

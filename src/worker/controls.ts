@@ -16,6 +16,7 @@ export interface TableControls {
   revision: number;
   vote?: Vote;
   nudge?: { target: string; count: number; turn: number; at?: number };
+  nudgeNotices?: { id: number; senderId: string; target: string; at: number }[];
   replayReady?: string[];
   celebrations?: Celebration[];
   result?: { revision: number; text: string; at: number };
@@ -111,6 +112,9 @@ export function controlsCommand(room: Room, playerId: string, data: Record<strin
     const previous = controls.nudge;
     const count = previous?.turn === turn && at - (previous.at ?? 0) < 2000 ? previous.count + 1 : 1;
     controls.nudge = { target, turn, count, at };
+    controls.nudgeNotices = (controls.nudgeNotices ?? []).filter(notice => at - notice.at < 3000 &&
+      (notice.senderId !== playerId || notice.target !== target));
+    controls.nudgeNotices.push({ id: controls.revision + 1, senderId: playerId, target, at });
     playerStats(game, playerId).nudges++;
   } else if (data.type === 'vote-start') {
     if (data.kind !== 'skip' && data.kind !== 'draw') throw new RuleError('Choose a vote.');

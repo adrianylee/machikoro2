@@ -48,6 +48,7 @@ test('all matching copies get their bonus and blue establishments activate for a
   game.players[0].establishments.stadium = 1;
   roll(game, 3, 4);
   assert.deepEqual(game.players.map(p => p.coins), [19, 6, 2]);
+  assert.deepEqual(Object.keys(game.landmarkTriggers), ['farmers-market']);
 });
 
 test('Winery pays for both Vineyards and Apple Orchard per copy', () => {
@@ -91,6 +92,7 @@ test('Charterhouse checks actual income including landmark effects before the bu
   game.players[2].landmarks.push('temple');
   roll(game, 6, 6);
   assert.equal(game.players[0].coins, 17);
+  assert.deepEqual(Object.keys(game.landmarkTriggers).sort(), ['tech-startup', 'temple']);
   const empty = match();
   empty.players[0].coins = 0;
   empty.players[1].landmarks.push('charterhouse', 'temple');

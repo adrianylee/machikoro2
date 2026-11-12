@@ -1,6 +1,9 @@
 import { PURCHASE_FLIGHT_MS } from '../game/match.ts';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { compareStanding } from '../game/view.ts';
+import type { SeatColors } from './MarketSidebar.tsx';
+import type { CSSProperties } from 'react';
 import type { GameView, TableCity } from '../game/view.ts';
 import type { TableControls } from '../worker/controls.ts';
 import { Balance, Symbol } from './Cards.tsx';
@@ -20,13 +23,18 @@ function time(milliseconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+const compactColumns: Record<string, string> = {
+  landmarks: 'Landm.', poke: 'Nudges', clock: 'Think time', robber: 'Coins stolen',
+  clover: 'Avg. roll', bag: 'Coins earned', buildings: 'Total bldgs.',
+};
+
 const honors: Honor[] = [
   { icon: 'poke', title: 'Most annoying', column: 'Nudges', score: stats => stats?.nudges ?? 0, format: n => `${n} nudges` },
   { icon: 'clock', title: 'Slowest thinker', column: 'Thinking time', score: stats => stats?.thinking ?? 0, format: n => `${time(n)} spent thinking` },
   { icon: 'robber', title: 'Biggest scammer', column: 'Coins stolen', score: stats => stats?.stolen ?? 0, format: n => `${n} coins stolen` },
   { icon: 'clover', title: 'Serendipitous', column: 'Average roll', score: stats => stats?.diceCount ? stats.diceTotal / stats.diceCount : 0, format: n => `${n.toFixed(1)} average roll value` },
   { icon: 'bag', title: 'Trillionaire', column: 'Coins earned', score: stats => stats?.earned ?? 0, format: n => `${n} coins earned` },
-  { icon: 'buildings', title: 'Architect', column: 'Buildings constructed', score: (stats, city) => stats?.built ??
+  { icon: 'buildings', title: 'Architect', column: 'Total buildings', score: (stats, city) => stats?.built ??
     city.landmarks.length + city.establishments.reduce((sum, stack) => sum + stack.count, 0), format: n => `${n} buildings constructed` },
   { icon: 'chat', title: 'Most talkative', column: 'Chat messages', score: stats => stats?.chats ?? 0, format: n => `${n} chat messages` },
 ];
@@ -74,10 +82,11 @@ function Congratulations({ controls, serverNow, disabled, send }: { controls?: T
   </>;
 }
 
-export function Results({ game, self, online, rematch, congratulate, controls }: {
+export function Results({ game, self, online, rematch, congratulate, controls, colors }: {
   game: GameView; self: string; online: boolean;
-  rematch: () => boolean; congratulate: () => boolean; controls?: TableControls;
+  rematch: () => boolean; congratulate: () => boolean; controls?: TableControls; colors: SeatColors;
 }) {
+  const [sort, setSort] = useState<{ key: string; ascending: boolean }>();
   const panel = useRef<HTMLElement>(null);
   const details = useRef<HTMLDialogElement>(null);
   const waiting = controls?.replayReady?.includes(self) ?? false;
@@ -88,15 +97,29 @@ export function Results({ game, self, online, rematch, congratulate, controls }:
   }, []);
   const winner = game.cities.find(city => city.id === game.winner);
   function compare(a: TableCity, b: TableCity) {
+    if (a.id === b.id) return 0;
     if (a.id === winner?.id) return -1;
     if (b.id === winner?.id) return 1;
-    return b.landmarks.length - a.landmarks.length || b.coins - a.coins;
+    return compareStanding(a, b);
   }
   const cities = [...game.cities].sort(compare);
   const awards = honors.map(honor => {
     const values = cities.map(city => honor.score(game.stats?.[city.id], city));
     return { ...honor, values, best: Math.max(...values) };
   });
+  const columns = [
+    { key: 'landmarks', label: 'Landmarks', value: (city: TableCity) => city.landmarks.length, format: String },
+    { key: 'coins', label: 'Coins', value: (city: TableCity) => city.coins, format: String },
+    ...honors.filter(honor => honor.icon !== 'chat').map(honor => ({
+      key: honor.icon, label: honor.column, value: (city: TableCity) => honor.icon === 'buildings'
+        ? city.landmarks.length + city.establishments.reduce((total, stack) => total + stack.count, 0)
+        : honor.score(game.stats?.[city.id], city),
+      format: honor.icon === 'clock' ? time : honor.icon === 'clover' ? (value: number) => value.toFixed(1) : String,
+    })),
+  ];
+  const sortedColumn = columns.find(column => column.key === sort?.key);
+  const statCities = sortedColumn && sort ? [...cities].sort((a, b) =>
+    (sort.ascending ? 1 : -1) * (sortedColumn.value(a) - sortedColumn.value(b))) : cities;
   let rank = 0;
   return <section ref={panel} className="panel results" aria-label="Game result">
     {winner?.id === self && <Confetti full />}
@@ -127,12 +150,17 @@ export function Results({ game, self, online, rematch, congratulate, controls }:
         <form method="dialog"><button className="icon-button" aria-label="Close statistics">×</button></form>
       </div>
       <div className="stats-scroll"><table className="stats-table">
-        <thead><tr><th scope="col">Player</th><th scope="col">Landmarks</th><th scope="col">Coins</th>
-          {awards.map(award => <th key={award.icon} scope="col">{award.column}</th>)}</tr></thead>
-        <tbody>{cities.map((city, index) => <tr key={city.id} data-self={city.id === self || undefined}>
-          <th scope="row">{city.name}{city.id === self && ' (you)'}</th><td>{city.landmarks.length}</td><td>{city.coins}</td>
-          {awards.map(award => <td key={award.icon}>{award.icon === 'clock' ? time(award.values[index]) :
-            award.icon === 'clover' ? award.values[index].toFixed(1) : award.values[index]}</td>)}
+        <thead><tr><th scope="col" aria-sort={sort ? undefined : 'other'}><button type="button" onClick={() => setSort(undefined)}>Player</button></th>
+          {columns.map(column => <th key={column.key} scope="col"
+            aria-sort={sort?.key === column.key ? sort.ascending ? 'ascending' : 'descending' : undefined}>
+            <button type="button" aria-label={column.label} onClick={() => setSort(current => ({ key: column.key, ascending: current?.key === column.key && !current.ascending }))}>
+              <span className="stats-label-full">{column.label}</span>
+              <span className="stats-label-compact" aria-hidden="true">{compactColumns[column.key] ?? column.label}</span>{sort?.key === column.key && <span aria-hidden="true"> {sort.ascending ? '▴' : '▾'}</span>}
+            </button></th>)}</tr></thead>
+        <tbody>{statCities.map(city => <tr key={city.id} data-self={city.id === self || undefined}
+          style={{ '--player-color': colors[city.id] } as CSSProperties}>
+          <th scope="row">{city.name}{city.id === self && ' (you)'}</th>
+          {columns.map(column => <td key={column.key}>{column.format(column.value(city))}</td>)}
         </tr>)}</tbody>
       </table></div>
     </dialog>
