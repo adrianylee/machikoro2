@@ -23,7 +23,7 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
       await second.getByRole('button', { name: 'Pass', exact: true }).click();
     }
     await starting.getByRole('button', { name: 'Select one die' }).click();
-    await expect(second.locator('.odds-table tr[data-selected]')).toHaveCount(2);
+    await expect(second.locator('.odds-table [data-hit]')).toHaveCount(0);
     const reference = second.getByRole('region', { name: 'Table references' });
     if (process.env.MACHIKORO_TEST_URL) {
       await reference.evaluate(element => {

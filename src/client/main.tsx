@@ -240,7 +240,7 @@ function RoomView({ id, sound, audio, notice }: { id: string; sound: boolean; au
             </li>; })}
           </ul>
         </section>
-        <References game={lobby.game} />
+        <References game={lobby.game} self={lobby.self} />
         <Activity lobby={lobby} send={send} />
         {lobby.game && <div className="panel city-buttons" role="group" aria-label="View city">
           <button type="button" className="secondary" aria-pressed={cityId === lobby.self} onClick={() => setViewing(lobby.self)}>Your city</button>
