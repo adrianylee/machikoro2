@@ -20,7 +20,7 @@ function NudgeNotice({ age, name }: { age: number; name: string }) {
   </div>;
 }
 
-export function Notifications({ lobby, send }: { lobby: Lobby; send: (action: RoomAction) => boolean }) {
+export function Notifications({ lobby, send, notices }: { lobby: Lobby; send: (action: RoomAction) => boolean; notices: { id: number; text: string }[] }) {
   const [now, setNow] = useState(Date.now);
   const nudge = lobby.controls?.nudge;
   const nudged = useRef<string | undefined>(undefined);
@@ -52,6 +52,7 @@ export function Notifications({ lobby, send }: { lobby: Lobby; send: (action: Ro
   }, [nudge, lobby.self]);
 
   return <aside className="notification-stack" aria-label="Table notifications" aria-live="polite">
+    {notices.map(notice => <div key={`local-${notice.id}`} className="panel notification nudge-notice">{notice.text}</div>)}
     {vote && <section className="panel notification">
       <strong>{vote.kind === 'draw' ? 'Draw vote' : 'Skip turn vote'}</strong>
       <p>{names.get(vote.initiator)} proposes {vote.kind === 'draw' ? 'ending the game in a draw' : `skipping ${names.get(vote.target)}’s turn`}.</p>

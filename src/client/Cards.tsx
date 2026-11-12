@@ -235,7 +235,7 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
       {ownerName ? <><BuildingArt source={card.art} /><span aria-hidden="true">∞</span></> : mini ? <>{card.numbers.length > 0 && <span>{card.numbers.join('–')}</span>}<Symbol name={card.icon ?? 'landmark'} />
         {count > 1 && <small>×{count}</small>}</> : <>
         <span className="card-picture">
-          {isBank ? <span className="coin bank-infinity" aria-label="Unlimited coins">∞</span> : <CardMeta card={card} count={count} cost={cost ?? card.prices[0]} />}
+          {isBank ? <span className="card-meta"><span className="coin" aria-label="Unlimited coins">∞</span></span> : <CardMeta card={card} count={count} cost={cost ?? card.prices[0]} />}
           <BuildingArt source={card.art} />
         </span>
         <CardSummary card={card} compact={!inline} />
@@ -258,7 +258,7 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
       }}
       onAnimationEnd={() => { if (preview.closing) setPreview(undefined); }}>
       {mini ? <CardSummary card={card} /> : <>
-        {isBank ? <span className="coin bank-infinity" aria-label="Unlimited coins">∞</span>
+        {isBank ? <span className="card-meta"><span className="coin" aria-label="Unlimited coins">∞</span></span>
           : <CardMeta card={card} count={count} cost={ownerName ? undefined : cost ?? card.prices[0]} />}
         <BuildingArt source={card.art} /><CardSummary card={card} compact={isBank} />
         {ownerName && <p className="modifier-owner">Owned by {ownerName}</p>}

@@ -33,6 +33,7 @@ export interface GameView {
   openingRound: number;
   dice: number[] | null;
   rollVersion?: number;
+  rollCoinChanges?: Record<string, number>;
   dicePresentation?: DicePresentation;
   serverNow?: number;
   diceSelection?: 1 | 2;
@@ -124,6 +125,7 @@ export function matchView(game: Match, seats: { id: string; name: string }[], vi
     phase: game.phase, activePlayerId: active.id, openingRound: game.openingRound,
     dice: game.roll?.dice ?? null, rollVersion: game.rollVersion, turnStartedAt: game.turnStartedAt, turnBeganAt: game.turnBeganAt, supply, legalBuilds,
     version: game.version, choice: game.choice, winner: game.winner, events: game.events,
+    rollCoinChanges: game.rollCoinChanges,
     landmarkTriggers: game.landmarkTriggers, propertyActivations: game.propertyActivations, turnSequence: game.turnSequence,
     propertyCoinsPartial: game.propertyCoinsPartial || (!game.propertyCoins && (game.events[0]?.id ?? 1) > 1) || undefined,
     oddsPayouts: game.phase === 'roll' ? establishmentPayouts(game, viewer.id) : undefined,

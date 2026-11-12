@@ -34,7 +34,7 @@ export interface PlayerStats {
 
 export const COIN_FLIGHT_MS = 1050;
 export const PURCHASE_FLIGHT_MS = 1850;
-export const DICE_REST_MS = 8000;
+export const DICE_REST_MS = 7000;
 export interface DicePresentation { startedAt: number; duration: number; seed: number }
 export interface CoinMovement { from: string; to: string; amount: number }
 
@@ -51,6 +51,7 @@ export interface GameEvent {
 export interface Match extends OpeningState {
   roll: Roll | null;
   rollVersion?: number;
+  rollCoinChanges?: Record<string, number>;
   dicePresentation?: DicePresentation;
   diceSelection?: 1 | 2;
   turnSequence?: number;
@@ -128,6 +129,12 @@ function recordPropertyCoins(game: Match, player: Player, cardId: string, amount
 function log(game: Match, player: Player, text: string, sound?: GameSound, details: Pick<GameEvent, 'payment' | 'coins' | 'purchase'> = {}) {
   const id = (game.events.at(-1)?.id ?? 0) + 1;
   game.events.push({ id, playerId: player.id, text, sound, ...details });
+  if (game.rollCoinChanges && (game.phase === 'roll' || game.phase === 'resolve' || game.phase === 'choice')) {
+    for (const { from, to, amount } of details.coins ?? []) {
+      if (from !== 'bank') game.rollCoinChanges[from] = (game.rollCoinChanges[from] ?? 0) - amount;
+      if (to !== 'bank') game.rollCoinChanges[to] = (game.rollCoinChanges[to] ?? 0) + amount;
+    }
+  }
   if (game.events.length > 150) game.events.shift();
 }
 
@@ -255,6 +262,7 @@ function scheduleResolution(game: Match, stage: NonNullable<Match['resolution']>
 function performRoll(game: Match, dice: 1 | 2, random: () => number, delay: number, motion?: ThrowMotion) {
   const roll = rollDice(dice, random);
   game.roll = roll;
+  game.rollCoinChanges = {};
   delete game.landmarkTriggers;
   delete game.propertyActivations;
   game.rollVersion = game.version + 1;
@@ -340,7 +348,7 @@ export function establishmentPayouts(game: Match, playerId: string) {
     const trial: Match = {
       ...game, players: game.players.map(player => ({ ...player })),
       roll: { dice: [1], total: index + 1, doubles: false },
-      stats: {}, events: [], propertyCoins: {}, landmarkTriggers: {},
+      stats: {}, events: [], propertyCoins: {}, landmarkTriggers: {}, rollCoinChanges: undefined,
     };
     resolveEstablishments(trial, undefined, 0, true);
     return trial.stats?.[playerId]?.earned ?? 0;
@@ -539,6 +547,7 @@ function performBuild(game: Match, cardId: string | null, delay: number) {
 
 function finishTurn(game: Match) {
   game.turnSequence = (game.turnSequence ?? 0) + 1;
+  if (game.extraTurn) delete game.rollCoinChanges;
   game.activeSeat = nextSeat(game.activeSeat, game.players.length, game.extraTurn);
   delete game.resolution;
   delete game.resolvingStep;

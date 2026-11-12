@@ -42,9 +42,14 @@ test('payout forecasts match actual stacked collections without changing the gam
   assert.equal(establishmentPayouts(game, 'c')[2], 2);
   assert.deepEqual(game, before);
   roll(game, 3);
+  assert.deepEqual(game.rollCoinChanges, { a: -1, b: 1, c: 2 });
   assert.equal(game.propertyCoins.b.cafe, 1);
   assert.equal(game.propertyCoins.c.cafe, 2);
   assert.ok(game.propertyActivations.b.cafe);
+  applyMatchAction(game, 'a', { type: 'build', cardId: null });
+  assert.deepEqual(game.rollCoinChanges, { a: -1, b: 1, c: 2 });
+  roll(game, 6);
+  assert.deepEqual(game.rollCoinChanges, {});
 });
 
 test('roll statistics count throws and remember dice per player', () => {
@@ -148,7 +153,9 @@ test('Amusement Park and Radio Tower yield one additional turn when combined', (
   roll(game, 2, 2);
   build(game, 'radio-tower');
   assert.equal(game.activeSeat, 0);
+  assert.equal(game.rollCoinChanges, undefined);
   roll(game, 5);
+  assert.deepEqual(game.rollCoinChanges, {});
   applyMatchAction(game, 'a', { type: 'build', cardId: null });
   assert.equal(game.activeSeat, 1);
 });

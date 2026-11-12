@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { MatchAction } from '../game/match.ts';
 import { TABLE_CARDS } from '../game/view.ts';
 import type { GameView } from '../game/view.ts';
@@ -45,7 +46,7 @@ export function TurnClock({ start, serverNow }: { start: number; serverNow?: num
   return <time className="turn-clock" aria-label="Elapsed turn time">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</time>;
 }
 
-export function GameTable({ game, self, cityId, online, send, rematch, congratulate, controls, colors }: {
+export function GameTable({ game, self, cityId, online, send, rematch, congratulate, controls, colors, nudge }: {
   game: GameView;
   self: string;
   cityId: string;
@@ -55,6 +56,7 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
   congratulate: () => boolean;
   controls?: TableControls;
   colors: SeatColors;
+  nudge?: ReactNode;
 }) {
   const [selection, setSelection] = useState<{ cityId: string; filter?: CityFilter }>();
   const filter = selection?.cityId === cityId ? selection.filter : undefined;
@@ -83,7 +85,7 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
 
   return <div className="game-stage">
     {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} congratulate={congratulate} controls={controls} colors={colors} /> : <section className="panel turn-controls" aria-label="Turn controls">
-      <div>
+      <div className="turn-heading">
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
         {canBuild && <p className="muted">{game.phase === 'opening' ? 'Build an establishment or pass.' : 'Build one card or pass.'}</p>}
       </div>
@@ -91,6 +93,7 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
       {online && isActive && game.phase === 'roll' && <DiceTray selected={game.diceSelection} onSelect={dice => send({ type: 'dice-select', dice })}
         onThrow={dice => send({ type: 'roll', dice })} />}
       {canBuild && <button className="secondary" onClick={() => send({ type: 'build', cardId: null })}>Pass</button>}
+      {!isActive && nudge}
     </section>}
     {isActive && game.choice && <EffectChoice key={game.version} game={game} self={self} disabled={!online}
       choose={decision => send({ type: 'choose', decision })} />}

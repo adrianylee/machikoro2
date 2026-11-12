@@ -16,6 +16,7 @@ test('table presents market, cities and readable card details on desktop and a p
       chat: [],
       game: {
         phase: 'opening', openingRound: 2, activePlayerId: 'aki',
+        rollCoinChanges: strongerRival ? { aki: -2, ren: 3 } : undefined,
         supply: {
           low: { remaining: 27, stacks: [{ id: 'bakery', count: 3 }, { id: 'wheat-field', count: 1 }] },
           high: { remaining: 0, stacks: [] },
@@ -53,6 +54,9 @@ test('table presents market, cities and readable card details on desktop and a p
   emit!();
   await expect(standings).toHaveText(['1. Bo', '2. Ren', '3. Aki (you)']);
   await expect(modifiers.locator('.modifier-pulse')).toBeVisible();
+  const roster = page.locator('.roster');
+  await expect(roster.getByLabel('Lost 2 coins this roll')).toHaveText('−2');
+  await expect(roster.getByLabel('Gained 3 coins this roll')).toHaveText('+3');
   await expect(modifiers.getByRole('group', { name: 'Temple' })).toBeVisible();
   await page.screenshot({ path: info.outputPath('table-desktop.png'), fullPage: true });
   const bank = page.getByRole('region', { name: 'Bank', exact: true });
@@ -70,10 +74,11 @@ test('table presents market, cities and readable card details on desktop and a p
   const sidebarGap = bankBox!.y - (modifiersBox!.y + modifiersBox!.height);
   expect(sidebarGap).toBeGreaterThan(0);
   expect(cityBox!.y - (marketBox!.y + marketBox!.height)).toBeCloseTo(sidebarGap);
-  await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(23, 23, 25)');
+  await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(245, 231, 208)');
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   await expect(bank).toHaveCSS('background-color', 'rgb(36, 37, 39)');
   await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(23, 23, 25)');
+  await expect(bank.locator('.bank-card')).toHaveCSS('border-top-color', 'rgb(255, 210, 48)');
   await page.screenshot({ path: info.outputPath('table-dark.png'), fullPage: true });
   await page.getByRole('button', { name: 'Switch to light mode' }).click();
   await market.getByRole('group', { name: 'Bakery, 3 copies' }).hover();
@@ -127,6 +132,8 @@ test('table presents market, cities and readable card details on desktop and a p
   await vineyard.hover();
   await expect(vineyard.getByText(/copies in the deck/)).toBeVisible();
   await expect(vineyard.getByText(/Coins this game: 0/)).toBeVisible();
+  const textSize = await vineyard.locator('.card-inline-info > p').evaluate(node => getComputedStyle(node).fontSize);
+  await expect(vineyard.getByText(/copies in the deck/)).toHaveCSS('font-size', textSize);
   await expect(page.getByRole('region', { name: 'Vineyard details' })).toHaveCount(0);
   const high = filters.getByRole('button', { name: 'Two dice', exact: true });
   await high.click();
