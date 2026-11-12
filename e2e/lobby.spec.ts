@@ -52,6 +52,7 @@ test('create a private room, join from a second browser, chat and recover the gu
     const offer = buyer.getByRole('region', { name: 'Market' }).locator('.table-card').first();
     const cardId = await offer.getAttribute('data-card');
     await offer.focus();
+    await offer.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }));
     const buy = buyer.getByRole('button', { name: /^Buy / });
     await expect(buy).toBeEnabled();
     await buy.click();

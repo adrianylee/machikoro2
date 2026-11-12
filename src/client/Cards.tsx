@@ -143,7 +143,10 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
   function show() {
     clearTimeout(timeout.current);
     const rect = anchor.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect || rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) {
+      setPreview(undefined);
+      return;
+    }
     const width = Math.min(innerWidth - 20, mini ? 192 : Math.max(212, rect.width * 1.26));
     const half = width / 2;
     const left = Math.max(half + 10, Math.min(rect.left + rect.width / 2, innerWidth - half - 10));
@@ -171,7 +174,14 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setPreview(undefined); };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape);
-    const scrolled = () => setPreview(undefined);
+    const scrolled = () => {
+      const focused = document.activeElement;
+      if (anchor.current?.contains(focused) || popup.current?.contains(focused)) {
+        show();
+      } else {
+        setPreview(undefined);
+      }
+    };
     window.addEventListener('scroll', scrolled, true);
     return () => {
       document.removeEventListener('pointerdown', outside);
@@ -184,7 +194,9 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }
       data-color={card.color} data-stacked={count > 1 || undefined} data-card={card.id}
       data-unaffordable={unaffordable || undefined} aria-label={description}
       onPointerEnter={event => { if (event.pointerType !== 'touch') show(); }}
-      onPointerLeave={event => { if (event.pointerType !== 'touch') hide(); }} onFocus={show}
+      onPointerLeave={event => {
+        if (event.pointerType !== 'touch' && document.activeElement !== anchor.current) hide();
+      }} onFocus={show}
       onBlur={event => { if (!popup.current?.contains(event.relatedTarget)) hide(); }}
       onPointerDown={event => { if (event.pointerType === 'touch') event.currentTarget.focus({ preventScroll: true }); }}
       onKeyDown={event => {
