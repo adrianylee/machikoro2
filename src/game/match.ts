@@ -32,22 +32,32 @@ export interface PlayerStats {
   thinking: number; nudges: number; chats: number;
 }
 
+export const COIN_FLIGHT_MS = 1050;
+export const PURCHASE_FLIGHT_MS = 1850;
+export const DICE_REST_MS = 5000;
+export interface DicePresentation { startedAt: number; duration: number; seed: number }
+export interface CoinMovement { from: string; to: string; amount: number }
+
 export interface GameEvent {
   id: number;
   playerId: string;
   text: string;
   sound?: GameSound;
   payment?: { payerId: string; amount: number; source: string; at: number };
+  coins?: CoinMovement[];
+  purchase?: { cardId: string; cost: number };
 }
 
 export interface Match extends OpeningState {
   roll: Roll | null;
   rollVersion?: number;
+  dicePresentation?: DicePresentation;
+  diceSelection?: 1 | 2;
   turnSequence?: number;
   drawn?: boolean;
   throwMotion?: ThrowMotion;
   dieColors?: ('pink' | 'green')[];
-  resolution?: { stage: ResolutionStage | 'build'; at: number };
+  resolution?: { stage: ResolutionStage | 'build' | 'next-turn' | 'resume-opening' | 'resume-roll'; at: number };
   resolvingStep?: ResolutionStage | 'roll';
   stats?: Record<string, PlayerStats>;
   turnStartedAt?: number;
@@ -73,9 +83,9 @@ export function playerStats(game: Match, id: string): PlayerStats {
   return (game.stats ??= {})[id] ??= { stolen: 0, earned: 0, diceTotal: 0, diceCount: 0, thinking: 0, nudges: 0, chats: 0 };
 }
 
-function log(game: Match, player: Player, text: string, sound?: GameSound, payment?: GameEvent['payment']) {
+function log(game: Match, player: Player, text: string, sound?: GameSound, details: Pick<GameEvent, 'payment' | 'coins' | 'purchase'> = {}) {
   const id = (game.events.at(-1)?.id ?? 0) + 1;
-  game.events.push({ id, playerId: player.id, text, sound, payment });
+  game.events.push({ id, playerId: player.id, text, sound, ...details });
   if (game.events.length > 150) game.events.shift();
 }
 
@@ -98,7 +108,7 @@ function bank(game: Match, player: Player, amount: number, reason: string) {
   credit(player, amount);
   playerStats(game, player.id).earned += amount;
   if (player === activePlayer(game)) game.receivedCoins = true;
-  log(game, player, `earns ${amount} from ${reason}.`, 'income');
+  log(game, player, `earns ${amount} from ${reason}.`, 'income', { coins: [{ from: 'bank', to: player.id, amount }] });
 }
 
 function collect(game: Match, payer: Player, recipient: Player, amount: number, reason: string) {
@@ -109,7 +119,8 @@ function collect(game: Match, payer: Player, recipient: Player, amount: number, 
   stats.stolen += paid;
   stats.earned += paid;
   log(game, recipient, `collects ${paid} from ${payer.id === activePlayer(game).id ? 'the roller' : 'an opponent'} via ${reason}.`, 'payment',
-    { payerId: payer.id, amount: paid, source: reason, at: Date.now() });
+    { payment: { payerId: payer.id, amount: paid, source: reason, at: Date.now() },
+      coins: [{ from: payer.id, to: recipient.id, amount: paid }] });
 }
 
 const eligibleHalf = (player: Player) => player.coins > 10 ? Math.floor(player.coins / 2) : 0;
@@ -180,7 +191,7 @@ function finishActivation(game: Match, delay: number) {
   }
 }
 
-function scheduleResolution(game: Match, stage: ResolutionStage | 'build', delay: number) {
+function scheduleResolution(game: Match, stage: NonNullable<Match['resolution']>['stage'], delay: number) {
   game.choice = null;
   game.phase = 'resolve';
   game.resolution = { stage, at: Date.now() + delay };
@@ -194,13 +205,15 @@ function performRoll(game: Match, dice: 1 | 2, random: () => number, delay: numb
   const active = activePlayer(game);
   log(game, active, `rolls ${roll.dice.join(' + ')}${dice === 2 ? ` = ${roll.total}` : ''}.`, 'roll');
   game.throwMotion = motion;
+  delete game.diceSelection;
+  game.dicePresentation = { startedAt: Date.now(), duration: 3000 + Math.floor(Math.random() * 2001), seed: Math.floor(Math.random() * 2 ** 32) };
   game.dieColors = dice === 2 ? ['pink', 'green'] : [Math.random() < .5 ? 'pink' : 'green'];
   const stats = playerStats(game, active.id);
   stats.diceTotal += roll.total;
   stats.diceCount += dice;
   if (delay) {
     game.resolvingStep = 'roll';
-    scheduleResolution(game, 'red', delay);
+    scheduleResolution(game, 'red', delay >= 500 ? game.dicePresentation.duration + 100 : delay);
   } else resolveEstablishments(game, undefined, 0);
 }
 
@@ -260,6 +273,20 @@ export function advanceResolution(game: Match, delay: number) {
   if (resolution.stage === 'build') {
     enterBuild(game);
   } else {
+    if (resolution.stage === 'next-turn') {
+      finishTurn(game);
+      game.version++;
+      return true;
+    }
+    if (resolution.stage === 'resume-opening' || resolution.stage === 'resume-roll') {
+      game.phase = resolution.stage === 'resume-opening' ? 'opening' : 'roll';
+      delete game.resolution;
+      delete game.resolvingStep;
+      game.turnStartedAt = Date.now();
+      game.version++;
+      return true;
+    }
+    const previous = game.events.at(-1)?.id ?? 0;
     game.resolvingStep = resolution.stage;
     if (resolution.stage === 'allowance') {
       grantAllowance(game);
@@ -268,6 +295,9 @@ export function advanceResolution(game: Match, delay: number) {
       finishActivation(game, delay);
     } else {
       resolveEstablishments(game, resolution.stage, delay);
+    }
+    if (delay >= 500 && game.resolution && game.events.some(event => event.id > previous && event.coins?.length)) {
+      game.resolution.at = Date.now() + COIN_FLIGHT_MS + 150;
     }
   }
   game.version++;
@@ -347,11 +377,14 @@ function landmarkBuilt(game: Match, player: Player, card: Landmark) {
       break;
     case 'equalize': {
       const amount = Math.ceil(game.players.reduce((total, city) => total + city.coins, 0) / game.players.length);
+      const coins: CoinMovement[] = [];
       for (const city of game.players) {
-        playerStats(game, city.id).earned += Math.max(0, amount - city.coins);
+        const difference = amount - city.coins;
+        if (difference) coins.push({ from: difference > 0 ? 'bank' : city.id, to: difference > 0 ? city.id : 'bank', amount: Math.abs(difference) });
+        playerStats(game, city.id).earned += Math.max(0, difference);
         city.coins = amount;
       }
-      log(game, player, `uses Park to set every balance to ${amount} coins.`);
+      log(game, player, `uses Park to set every balance to ${amount} coins.`, undefined, { coins });
       break;
     }
     case 'build-take-half':
@@ -368,7 +401,7 @@ function landmarkBuilt(game: Match, player: Player, card: Landmark) {
   }
 }
 
-function performBuild(game: Match, cardId: string | null) {
+function performBuild(game: Match, cardId: string | null, delay: number) {
   const active = activePlayer(game);
   const card = cardId === null ? undefined : findCard(CARDS, cardId);
   if (cardId !== null && (!card || !game.supply[card.row].stacks.some(stack => stack.id === cardId))) {
@@ -376,7 +409,8 @@ function performBuild(game: Match, cardId: string | null) {
   }
   const offer = card && buildOffer(game, active, card);
   if (offer?.blocked) throw new RuleError(offer.blocked);
-  if (card) log(game, active, `builds ${card.name} for ${offer!.cost} coins.`, 'build');
+  const previous = game.events.at(-1)?.id ?? 0;
+  if (card) log(game, active, `builds ${card.name} for ${offer!.cost} ${offer!.cost === 1 ? 'coin' : 'coins'}.`, 'build', { purchase: { cardId: card.id, cost: offer!.cost } });
   else log(game, active, 'passes.');
 
   if (game.phase === 'opening') {
@@ -384,6 +418,10 @@ function performBuild(game: Match, cardId: string | null) {
     game.turnSequence = (game.turnSequence ?? 0) + 1;
     game.turnStartedAt = Date.now();
     log(game, activePlayer(game), game.phase === 'opening' ? 'may build an opening establishment.' : 'starts the first turn.');
+    if (card && delay >= 500) {
+      game.resolvingStep = undefined;
+      scheduleResolution(game, game.phase === 'opening' ? 'resume-opening' : 'resume-roll', PURCHASE_FLIGHT_MS + 150);
+    }
     return;
   }
 
@@ -407,7 +445,11 @@ function performBuild(game: Match, cardId: string | null) {
       if (landmark.effect.kind === 'pass-income') bank(game, active, landmark.effect.coins, landmark.name);
     }
   }
-  finishTurn(game);
+  const hasPayout = game.events.some(event => event.id > previous && event.coins?.length);
+  if (delay >= 500 && (card || hasPayout)) {
+    game.resolvingStep = undefined;
+    scheduleResolution(game, 'next-turn', (card ? PURCHASE_FLIGHT_MS : 0) + (hasPayout ? COIN_FLIGHT_MS : 0) + 150);
+  } else finishTurn(game);
 }
 
 function finishTurn(game: Match) {
@@ -415,6 +457,7 @@ function finishTurn(game: Match) {
   game.activeSeat = nextSeat(game.activeSeat, game.players.length, game.extraTurn);
   delete game.resolution;
   delete game.resolvingStep;
+  delete game.diceSelection;
   game.choice = null;
   game.turnStartedAt = Date.now();
   game.extraTurn = false;
@@ -439,7 +482,10 @@ export function skipTurn(game: Match) {
     playerStats(game, player.id).thinking += Math.max(0, Date.now() - (game.turnStartedAt ?? Date.now()));
   }
   log(game, player, 'has their turn skipped by vote.');
-  if (game.phase === 'opening') {
+  if (game.phase === 'opening' || game.resolution?.stage === 'resume-opening') {
+    game.phase = 'opening';
+    delete game.resolution;
+    delete game.resolvingStep;
     openingBuild(game, player.id, null, CARDS);
     game.turnSequence = (game.turnSequence ?? 0) + 1;
     game.turnStartedAt = Date.now();
@@ -467,7 +513,7 @@ export function applyMatchAction(game: Match, playerId: string, action: MatchAct
       break;
     case 'build':
       if (game.phase !== 'opening' && game.phase !== 'build') throw new RuleError('You cannot build during this phase.');
-      performBuild(game, action.cardId);
+      performBuild(game, action.cardId, delay);
       break;
   }
   playerStats(game, playerId).thinking += Math.max(0, Date.now() - startedAt);

@@ -42,6 +42,16 @@ test('create a private room, join from a second browser, chat and recover the gu
     await active.getByRole('button', { name: 'Pass', exact: true }).click();
     await page.getByRole('button', { name: 'Game Log', exact: true }).click();
     await expect(page.getByRole('log', { name: 'Game events' }).getByText('passes.')).toBeVisible();
+    const buyer = active === page ? guest : page;
+    const offer = buyer.getByRole('region', { name: 'Market' }).locator('.table-card').first();
+    const cardId = await offer.getAttribute('data-card');
+    await offer.focus();
+    const buy = buyer.getByRole('button', { name: /^Buy / });
+    await expect(buy).toBeEnabled();
+    await buy.click();
+    await expect(page.locator('.traveling-coins')).toHaveCount(1);
+    await expect(guest.locator('.traveling-card')).toHaveCount(1);
+    await expect(buyer.getByRole('region', { name: 'Player city' }).locator(`[data-card="${cardId}"]`)).toBeVisible();
     const images = page.getByRole('region', { name: 'Market' }).locator('img');
     await expect(images).toHaveCount(15);
     await expect.poll(() => images.evaluateAll(nodes => nodes.every(node => (node as HTMLImageElement).naturalWidth > 0))).toBe(true);

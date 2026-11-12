@@ -13,7 +13,7 @@ interface Vote {
 export interface TableControls {
   revision: number;
   vote?: Vote;
-  nudge?: { target: string; count: number; turn: number };
+  nudge?: { target: string; count: number; turn: number; at?: number };
   result?: { revision: number; text: string; at: number };
 }
 
@@ -63,7 +63,10 @@ export function controlsCommand(room: Room, playerId: string, data: Record<strin
   const controls = room.controls ??= { revision: 0 };
   if (data.type === 'nudge') {
     if (playerId === target) throw new RuleError('It is your turn.');
-    controls.nudge = { target, turn, count: (controls.nudge?.turn === turn ? controls.nudge.count : 0) + 1 };
+    const at = Date.now();
+    const previous = controls.nudge;
+    const count = previous?.turn === turn && at - (previous.at ?? 0) < 2000 ? previous.count + 1 : 1;
+    controls.nudge = { target, turn, count, at };
     playerStats(game, playerId).nudges++;
   } else if (data.type === 'vote-start') {
     if (data.kind !== 'skip' && data.kind !== 'draw') throw new RuleError('Choose a vote.');

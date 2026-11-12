@@ -147,7 +147,7 @@ export class Room extends DurableObject {
   }
 
   resolutionDelay() {
-    return this.env.FAST_TEST_RESOLUTION === '1' ? 20 : 2000;
+    return this.env.FAST_TEST_RESOLUTION === '1' ? 20 : 500;
   }
 
   scheduleAlarm(room) {

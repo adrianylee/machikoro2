@@ -3,7 +3,7 @@ import type { GameView } from '../game/view.ts';
 import type { TableControls, VoteKind } from '../worker/controls.ts';
 import type { MatchAction } from '../game/match.ts';
 
-export type RoomAction = (MatchAction & { version: number }) | { type: 'chat'; text: string }
+export type RoomAction = ((MatchAction | { type: 'dice-select'; dice: 1 | 2 }) & { version: number }) | { type: 'chat'; text: string }
   | { type: 'remove'; playerId: string } | { type: 'start' } | { type: 'rematch'; version: number }
   | { type: 'nudge' } | { type: 'vote-start'; kind: VoteKind } | { type: 'vote-cast'; voteId: number; yes: boolean };
 

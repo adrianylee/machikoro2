@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { BuildingArt } from './BuildingArt.tsx';
 import { createPortal } from 'react-dom';
 import { CARDS } from '../game/catalog.ts';
 import type { Icon } from '../game/catalog.ts';
+import { TABLE_CARDS } from '../game/view.ts';
 import type { TableCard } from '../game/view.ts';
+import type { Stack } from '../game/supply.ts';
 
 const paths = {
   cup: 'M3 7h14v5a6 6 0 0 1-6 6H9a6 6 0 0 1-6-6Zm14 1h2a3 3 0 0 1 0 6h-2M3 21h16',
@@ -94,38 +97,112 @@ export function CardSummary({ card }: { card: TableCard }) {
 export function CardInformation({ card }: { card: TableCard }) {
   return <><p><EffectText text={card.effect} /></p>
     <p className="muted">{card.copies} {card.copies === 1 ? 'copy' : 'copies'} in the deck
-      {card.numbers.length > 0 && ` · Activates on ${card.numbers.join(' or ')}`}</p></>;
+      {card.numbers.length > 0 && ` · Activates on ${card.numbers.join(' or ')}`}</p>
+    {card.color === 'landmark' && <p className="muted">{card.prices.length === 1 ? 'Fixed cost' : 'First / second / third'} · {card.prices.join(' / ')} coins</p>}</>;
 }
 
-export function CardTile({ card, count, cost, unaffordable, mini, open }: {
-  card: TableCard; count: number; cost?: number; unaffordable?: boolean; mini?: boolean; open: () => void;
+export function CitySummary({ stacks }: { stacks: Stack[] }) {
+  const categories = new Map<SymbolName, Stack[]>();
+  for (const stack of stacks) {
+    const icon = TABLE_CARDS[stack.id].icon ?? 'landmark';
+    const group = categories.get(icon) ?? [];
+    group.push(stack);
+    categories.set(icon, group);
+  }
+  if (!categories.size) return null;
+  return <div className="city-summary" role="group" aria-label="City property summary">
+    {[...categories].map(([icon, properties]) => {
+      const total = properties.reduce((sum, property) => sum + property.count, 0);
+      return <div key={icon} className="summary-category">
+        <span className="mini-card" tabIndex={0} aria-label={`${labels[icon]}, ${total} ${total === 1 ? 'card' : 'cards'}`}>
+          <Symbol name={icon} />{total > 1 && <small>×{total}</small>}
+        </span>
+        <div className="panel summary-preview" role="region" aria-label={`${labels[icon]} properties`}>
+          {properties.map(({ id, count }) => {
+            const card = TABLE_CARDS[id];
+            return <div className="summary-property" key={id}>
+              <BuildingArt source={card.art} />
+              <div><strong>{card.name} {count > 1 && <small>×{count}</small>}</strong><CardInformation card={card} /></div>
+            </div>;
+          })}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
+export function CardTile({ card, count, cost, blocked, unaffordable, mini, buy }: {
+  card: TableCard; count: number; cost?: number; blocked?: string;
+  unaffordable?: boolean; mini?: boolean; buy?: () => boolean;
 }) {
   const [preview, setPreview] = useState<{ left: number; top: number }>();
-  const show = (element: HTMLElement) => {
-    if (!matchMedia('(hover: hover)').matches) return;
-    const rect = element.getBoundingClientRect();
-    setPreview({ left: Math.max(8, Math.min(rect.right + 8, innerWidth - 295)), top: Math.max(8, Math.min(rect.top, innerHeight - 360)) });
-  };
+  const anchor = useRef<HTMLDivElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const description = `${card.name}${count > 1 ? `, ${count} copies` : ''}${unaffordable ? ', unaffordable' : ''}`;
+  function show() {
+    clearTimeout(timeout.current);
+    const rect = anchor.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(300, innerWidth - 20);
+    const right = rect.right + width + 10 <= innerWidth;
+    const left = rect.left >= width + 10;
+    const side = right ? rect.right + 3 : left ? rect.left - width - 3 : rect.left;
+    const vertical = right || left ? rect.top : rect.bottom + 355 <= innerHeight ? rect.bottom + 3 : rect.top - 355;
+    setPreview({ left: Math.max(10, Math.min(side, innerWidth - width - 10)), top: Math.max(10, Math.min(vertical, innerHeight - 355)) });
+  }
+  function hide() {
+    clearTimeout(timeout.current);
+    timeout.current = setTimeout(() => setPreview(undefined), 160);
+  }
+  useEffect(() => () => clearTimeout(timeout.current), []);
+  useEffect(() => {
+    if (!preview) return;
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !anchor.current?.contains(event.target) && !popup.current?.contains(event.target)) setPreview(undefined);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setPreview(undefined); };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [preview]);
   return <>
-    <button className={mini ? 'mini-card' : 'table-card'} data-color={card.color} data-stacked={count > 1 || undefined}
-      data-unaffordable={unaffordable || undefined} onClick={() => { setPreview(undefined); open(); }}
-      onMouseEnter={event => show(event.currentTarget)} onMouseLeave={() => setPreview(undefined)}
-      onFocus={event => show(event.currentTarget)} onBlur={() => setPreview(undefined)}
-      aria-label={`${card.name}${count > 1 ? `, ${count} copies` : ''}${unaffordable ? ', unaffordable' : ''}`}>
-      {mini ? <><Symbol name={card.icon ?? 'landmark'} />{count > 1 && <small>×{count}</small>}</> : <>
+    <div ref={anchor} tabIndex={0} role="group" className={mini ? 'mini-card' : 'table-card'}
+      data-color={card.color} data-stacked={count > 1 || undefined} data-card={card.id}
+      data-unaffordable={unaffordable || undefined} aria-label={description}
+      onPointerEnter={event => { if (event.pointerType !== 'touch') show(); }}
+      onPointerLeave={event => { if (event.pointerType !== 'touch') hide(); }} onFocus={show}
+      onBlur={event => { if (!popup.current?.contains(event.relatedTarget)) hide(); }}
+      onPointerDown={event => { if (event.pointerType === 'touch') event.currentTarget.focus({ preventScroll: true }); }}
+      onKeyDown={event => {
+        if (event.key === 'Tab' && !event.shiftKey && popup.current?.querySelector('button')) {
+          event.preventDefault();
+          popup.current.querySelector('button')?.focus();
+        }
+      }}>
+      {mini ? <>{card.numbers.length > 0 && <span>{card.numbers.join('–')}</span>}<Symbol name={card.icon ?? 'landmark'} />
+        {count > 1 && <small>×{count}</small>}</> : <>
         <span className="card-picture">
-          <img src={card.art} alt="" decoding="async" />
           <span className="card-meta"><span className="activation">{card.numbers.length ? card.numbers.join(' · ') : <Symbol name="landmark" />}</span>
             {count > 1 && <span className="card-count">×{count}</span>}
             <Coin value={cost ?? card.prices[0]} />
           </span>
+          <BuildingArt source={card.art} />
         </span>
         <CardSummary card={card} />
       </>}
-    </button>
-    {preview && createPortal(<div className="panel card-preview" style={preview} aria-hidden="true">
-      <img src={card.art} alt="" /><strong>{card.name} <Symbol name={card.icon ?? 'landmark'} /></strong>
+    </div>
+    {preview && createPortal(<div ref={popup} className="panel card-preview" style={preview} role="region" aria-label={`${card.name} details`}
+      onPointerEnter={() => clearTimeout(timeout.current)} onPointerLeave={hide}
+      onFocus={() => clearTimeout(timeout.current)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) hide(); }}>
+      <BuildingArt source={card.art} /><strong>{card.name} <Symbol name={card.icon ?? 'landmark'} /></strong>
       <CardInformation card={card} />
+      {blocked && <p className="muted">{blocked}</p>}
+      {buy && cost !== undefined && <button type="button" className="primary card-buy" disabled={!!blocked}
+        onClick={() => { if (buy()) setPreview(undefined); }}>Buy {card.name} for {cost} {cost === 1 ? 'coin' : 'coins'}</button>}
     </div>, document.body)}
   </>;
 }

@@ -42,6 +42,15 @@ export function gameCommand(room: RoomGame, playerId: string, data: Message, ran
   if (!room.game) throw new RuleError('The game has not started.');
   if (data.version !== room.game.version) throw new RuleError('The table changed. Try again.');
   switch (data.type) {
+    case 'dice-select': {
+      const game = room.game;
+      if (game.phase !== 'roll' || game.players[game.activeSeat].id !== playerId || (data.dice !== 1 && data.dice !== 2)) {
+        throw new RuleError('Choose dice on your turn.');
+      }
+      if (game.diceSelection === data.dice) return false;
+      game.diceSelection = data.dice;
+      break;
+    }
     case 'roll':
       if (data.dice !== 1 && data.dice !== 2) throw new RuleError('Choose one or two dice.');
       const input = data.motion;

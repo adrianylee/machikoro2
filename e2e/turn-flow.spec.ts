@@ -22,6 +22,21 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
       await starting.getByRole('button', { name: 'Pass', exact: true }).click();
       await second.getByRole('button', { name: 'Pass', exact: true }).click();
     }
+    await starting.getByRole('button', { name: 'Select one die' }).click();
+    await expect(second.locator('.odds-table tr[data-selected]')).toHaveCount(2);
+    const reference = second.getByRole('region', { name: 'Table references' });
+    if (process.env.MACHIKORO_TEST_URL) {
+      await reference.evaluate(element => {
+        const steps: string[] = [];
+        const readStep = () => {
+          const step = element.querySelector<HTMLElement>('[aria-current="step"]')?.dataset.category;
+          if (step && steps.at(-1) !== step) steps.push(step);
+          (element as HTMLElement).dataset.observedSteps = steps.join(',');
+        };
+        new MutationObserver(readStep).observe(element, { subtree: true, attributes: true, attributeFilter: ['aria-current'] });
+        readStep();
+      });
+    }
     const die = starting.getByRole('button', { name: 'Throw 1 die' });
     await die.scrollIntoViewIfNeeded();
     const box = (await die.boundingBox())!;
@@ -29,26 +44,27 @@ test('a two-player lobby can throw a die, skip by majority, and end by draw vote
     await starting.mouse.down();
     await starting.mouse.move(box.x + box.width / 2 + 95, box.y + box.height / 2 + 45, { steps: 8 });
     await starting.mouse.up();
-    if (process.env.MACHIKORO_TEST_URL) {
-      const reference = second.getByRole('region', { name: 'Table references' });
-      for (const step of ['roll', 'red', 'blue', 'green', 'purple', 'landmarks', 'allowance']) {
-        await expect(reference.locator('[aria-current="step"]')).toHaveAttribute('data-category', step);
-      }
-    }
     await expect(second.getByRole('heading', { name: 'Build', exact: true })).toBeVisible({ timeout: 23_000 });
+    if (process.env.MACHIKORO_TEST_URL) {
+      await expect(reference).toHaveAttribute('data-observed-steps', 'roll,red,blue,green,purple,landmarks,allowance,build');
+    }
+    await expect(second.locator('.dice-flight[data-settled] .die-flat')).toBeVisible({ timeout: 6500 });
+    await expect(second.locator('.odds-table [data-hit]')).toHaveCount(2);
 
-    await second.getByRole('button', { name: 'Table Controls' }).click();
-    await second.getByRole('button', { name: 'Nudge', exact: true }).click();
-    await second.getByRole('button', { name: 'Nudge ×1' }).click();
+    const nudge = second.getByRole('button', { name: /^Nudge:/ });
+    await nudge.click();
+    await expect(nudge.locator('.nudge-counter')).toHaveText('×1');
+    await nudge.click();
     await expect(starting.getByText('The table nudged you')).toBeVisible();
     await expect(starting.getByRole('complementary', { name: 'Table notifications' }).getByText('×2', { exact: true })).toBeVisible();
-    await second.getByRole('button', { name: 'Vote to skip turn' }).click();
+    await second.getByRole('button', { name: 'Table Controls' }).click();
+    await second.getByRole('button', { name: /^Vote to skip .+’s turn$/ }).click();
     await expect(starting.getByText('Skip turn vote', { exact: true })).toBeVisible();
     await expect(starting.getByRole('heading', { name: 'Build', exact: true })).toBeVisible();
     await starting.getByRole('button', { name: 'Yes', exact: true }).click();
     await expect(second.getByRole('button', { name: 'Throw 1 die' })).toBeVisible();
 
-    await second.getByRole('button', { name: 'Vote to draw' }).click();
+    await second.getByRole('button', { name: 'Vote to draw game' }).click();
     await starting.getByRole('button', { name: 'Yes', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Game drawn' })).toBeVisible();
     await expect(guest.getByRole('heading', { name: 'Game drawn' })).toBeVisible();

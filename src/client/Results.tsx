@@ -1,3 +1,4 @@
+import { PURCHASE_FLIGHT_MS } from '../game/match.ts';
 import { useEffect, useRef } from 'react';
 import type { GameView, TableCity } from '../game/view.ts';
 import { Balance, Symbol } from './Cards.tsx';
@@ -24,7 +25,11 @@ function Confetti({ full = false }: { full?: boolean }) {
 
 export function Results({ game, self, online, rematch }: { game: GameView; self: string; online: boolean; rematch?: () => boolean }) {
   const panel = useRef<HTMLElement>(null);
-  useEffect(() => { panel.current?.scrollIntoView({ block: 'start' }); }, []);
+  useEffect(() => {
+    const delay = game.events.at(-2)?.purchase && !matchMedia('(prefers-reduced-motion: reduce)').matches ? PURCHASE_FLIGHT_MS : 0;
+    const timer = setTimeout(() => panel.current?.scrollIntoView({ block: 'start' }), delay);
+    return () => clearTimeout(timer);
+  }, []);
   const winner = game.cities.find(city => city.id === game.winner);
   function compare(a: TableCity, b: TableCity) {
     if (a.id === winner?.id) return -1;
