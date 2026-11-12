@@ -493,6 +493,8 @@ img[data-sprite-pending] { visibility: hidden; }
 .honor { position: relative; display: inline-flex; align-items: center; cursor: help; }
 .honor-tooltip { display: none; position: absolute; z-index: 25; top: calc(100% + 5px); left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: .78rem; font-weight: 700; padding: 6px 9px; color: var(--ink); }
 .honor:is(:hover,:focus-visible) .honor-tooltip { display: block; }
+  .rank-player-name { max-width: 17ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.results li[data-winner] .rank-name { flex: 1 0 max-content; min-width: max-content; }
 .congratulate { position: relative; padding: 5px 9px; min-height: 36px; }
 .congratulate:active { transform: scale(.94); }
 .results-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -514,6 +516,9 @@ img[data-sprite-pending] { visibility: hidden; }
   .market-side { grid-template-columns: minmax(0, 1fr) 100px; }
   .market-side .table-bank { padding: 7px; }
   .honor-tooltip { white-space: normal; width: max-content; max-width: 160px; }
+  [data-winner] .rank-name { font-size: 1.1rem; }
+  .rank-player-name { max-width: 10ch; }
+  .rank-name .honor { font-size: .88rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .card-preview { animation-duration: .01s !important; }

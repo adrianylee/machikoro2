@@ -105,7 +105,7 @@ export function Results({ game, self, online, rematch, congratulate, controls }:
       if (!index || compare(cities[index - 1], city)) rank = index + 1;
       return <li key={city.id} data-winner={city.id === winner?.id || undefined}>
         <span className="rank-number">{rank}.</span>
-        <span className="rank-name">{city.name}
+        <span className="rank-name"><span className="rank-player-name" title={city.name}>{city.name}</span>
           {awards.filter(award => award.best > 0 && award.values[index] === award.best).map(award =>
             <span key={award.icon} className="honor" tabIndex={0} aria-label={`${award.title}: ${award.format(award.values[index])}`}>
               <Symbol name={award.icon} />
