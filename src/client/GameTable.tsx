@@ -5,7 +5,7 @@ import type { MatchAction } from '../game/match.ts';
 import { TABLE_CARDS } from '../game/view.ts';
 import type { GameView } from '../game/view.ts';
 import { EffectChoice } from './EffectChoice.tsx';
-import { Balance, CardTile, CityFilters, matchesCityFilter } from './Cards.tsx';
+import { Balance, CardTile, CityFilters, Coin, matchesCityFilter } from './Cards.tsx';
 import type { CityFilter } from './Cards.tsx';
 import { MarketSidebar } from './MarketSidebar.tsx';
 import type { SeatColors } from './MarketSidebar.tsx';
@@ -85,8 +85,13 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
   return <div className="game-stage" ref={stage}>
     {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} congratulate={congratulate} controls={controls} colors={colors} /> : <section className="panel turn-controls" aria-label="Turn controls">
       <div className="turn-heading">
-        <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
-        <p className="muted">{tablePhase(game)}</p>
+        <div className="turn-title">
+          <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
+          <p className="muted">{tablePhase(game)}</p>
+        </div>
+        {isActive && <p className="turn-wallet" title="Your coins">
+          <Coin value={viewerCoins} metal="gold" /><span aria-hidden="true">{viewerCoins === 1 ? 'coin' : 'coins'}</span>
+        </p>}
       </div>
       {game.dice && game.phase !== 'roll' && game.resolutionStage !== 'roll' && <span className="roll-total">Rolled {game.dice.join(' + ')}{game.dice.length === 2 && ` = ${game.dice[0] + game.dice[1]}`}</span>}
       <div className="turn-actions">

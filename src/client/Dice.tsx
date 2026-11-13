@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DICE_REST_MS } from '../game/match.ts';
 import type { GameView } from '../game/view.ts';
+import { DIE_CANVAS_SCALE, drawDie } from './dieRenderer.ts';
 
 const pips = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]];
 const faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
@@ -10,11 +11,19 @@ function Pips({ face }: { face: number }) {
   return pips[face].map(pip => <i key={pip} style={{ gridArea: `${Math.floor(pip / 3) + 1} / ${pip % 3 + 1}` }} />);
 }
 
-function Die({ face, color }: { face: number; color: Color }) {
+/** The values on the front, back, right, left, top, and bottom of a die showing `face`. */
+function dieFaces(face: number) {
   const side = face === 1 || face === 6 ? 2 : 1;
   const top = [1, 2, 3].find(number => ![face, 7 - face, side, 7 - side].includes(number)) ?? 3;
+  return [face, 7 - face, side, 7 - side, top, 7 - top];
+}
+
+// The canvas draws the die as a true rounded cube. The cube of flat faces carries the tumble
+// animation the canvas follows, and is what shows if WebGL is unavailable.
+function Die({ face, color }: { face: number; color: Color }) {
   return <span className="die-cube" data-die-color={color} aria-hidden="true">
-    {[face, 7 - face, side, 7 - side, top, 7 - top].map((number, i) => <span className={`die-side die-${faces[i]}`} key={i}>
+    {['die-inner', ''].flatMap(layer => faces.map(name => <span className={`die-core ${layer} die-${name}`} key={layer + name} />))}
+    {dieFaces(face).map((number, i) => <span className={`die-side die-${faces[i]}`} key={i}>
       <Pips face={number} />
     </span>)}
   </span>;
@@ -63,7 +72,7 @@ function seeded(seed: number) {
   };
 }
 
-function throwFrames(width: number, height: number, random: () => number) {
+function throwFrames(width: number, height: number, size: number, random: () => number) {
   const edge = Math.floor(random() * 4);
   let x = edge === 0 ? 0 : edge === 1 ? width : random() * width;
   let y = edge === 2 ? 0 : edge === 3 ? height : random() * height;
@@ -118,9 +127,14 @@ function throwFrames(width: number, height: number, random: () => number) {
     travel: frames.map(({ offset, x, y, lift }) => ({
       offset, transform: `translate3d(${x}px,${y - lift * .4}px,${lift}px)`,
     })),
+    // The table shadow stays on the surface, spreading and fading while the die is in the air.
+    shadow: frames.map(({ offset, x, y, lift }) => ({
+      offset, transform: `translate(${x}px,${y}px) scale(${1 + lift / 110})`, opacity: Math.max(.3, 1 - lift / 60),
+    })),
+    // The cube sits half its depth behind the table plane, so the face that lands up is drawn at the flat die's exact size and position.
     spin: frames.map(({ offset, tumble }) => {
       const progress = tumble / total;
-      return { offset, transform: `rotateX(${38 + (pitch - 38) * progress}deg) rotateY(${-26 + (yaw + 26) * progress}deg) rotateZ(${16 + 344 * progress}deg)` };
+      return { offset, transform: `translateZ(${-size / 2}px) rotateX(${38 + (pitch - 38) * progress}deg) rotateY(${-26 + (yaw + 26) * progress}deg) rotateZ(${16 + 344 * progress}deg)` };
     }),
   };
 }
@@ -150,6 +164,7 @@ function RolledDice({ roll }: { roll: ReceivedRoll }) {
   const presentation = game.dicePresentation;
   const [visible, setVisible] = useState(() => !!presentation && rollAge(roll) < presentation.duration + DICE_REST_MS + 600);
   const [settled, setSettled] = useState(false);
+  const [solid, setSolid] = useState(true);
   useEffect(() => {
     const element = board.current;
     if (!element || !presentation) return;
@@ -159,16 +174,36 @@ function RolledDice({ roll }: { roll: ReceivedRoll }) {
     const settle = setTimeout(() => setSettled(true), reduce ? 0 : remaining);
     const hide = setTimeout(() => setVisible(false), remaining + Math.max(0, presentation.duration + DICE_REST_MS + 600 - Math.max(age, presentation.duration)));
     let animations: Animation[] = [];
+    let frame = 0;
+    function paint() {
+      if (!element) return;
+      const scale = Math.min(devicePixelRatio || 1, 3);
+      for (const piece of element.querySelectorAll<HTMLElement>('.flying-die')) {
+        const cube = piece.querySelector<HTMLElement>('.die-cube');
+        const canvas = piece.querySelector('canvas');
+        if (!cube || !canvas) return;
+        const pixels = Math.round(piece.offsetWidth * DIE_CANVAS_SCALE * scale);
+        if (pixels && canvas.width !== pixels) canvas.width = canvas.height = pixels;
+        const style = getComputedStyle(cube);
+        if (!drawDie(canvas, style.transform, dieFaces(Number(piece.dataset.face)),
+          style.getPropertyValue('--die-base'), style.getPropertyValue('--die-pip'))) return setSolid(false);
+      }
+    }
+    function follow() {
+      paint();
+      if (!reduce && rollAge(roll) < presentation!.duration + 200) frame = requestAnimationFrame(follow);
+    }
     function place() {
       if (!element) return;
       animations.forEach(animation => animation.cancel());
       const elapsed = rollAge(roll);
       const { width, height } = element.getBoundingClientRect();
+      const shadows = element.querySelectorAll<HTMLElement>('.die-shadow');
       animations = Array.from(element.querySelectorAll<HTMLElement>('.flying-die')).flatMap((piece, index) => {
         const margin = 32;
         const random = seeded(presentation!.seed + index * 719);
-        const { travel, spin } = throwFrames(Math.max(0, width - piece.offsetWidth - margin * 2),
-          Math.max(0, height - piece.offsetHeight - margin * 2), random);
+        const { travel, spin, shadow } = throwFrames(Math.max(0, width - piece.offsetWidth - margin * 2),
+          Math.max(0, height - piece.offsetHeight - margin * 2), piece.offsetWidth, random);
         const last = travel.at(-1)!.transform;
         const movement = piece.animate(reduce ? [{ transform: last }, { transform: last }] : travel,
           { duration: presentation!.duration, fill: 'both' });
@@ -180,19 +215,35 @@ function RolledDice({ roll }: { roll: ReceivedRoll }) {
           delay: presentation!.duration + DICE_REST_MS, duration: 600, fill: 'forwards',
         });
         fade.currentTime = elapsed;
-        return [movement, rotation, fade];
+        const cast = shadows[index];
+        if (!cast) return [movement, rotation, fade];
+        const resting = shadow.at(-1)!;
+        const ground = cast.animate(reduce ? [resting, resting] : shadow, { duration: presentation!.duration, fill: 'both' });
+        ground.currentTime = Math.min(elapsed, presentation!.duration);
+        const groundFade = cast.animate([{ opacity: resting.opacity }, { opacity: 0 }], {
+          delay: presentation!.duration + DICE_REST_MS, duration: 600, fill: 'forwards',
+        });
+        groundFade.currentTime = elapsed;
+        return [movement, rotation, fade, ground, groundFade];
       });
+      paint();
     }
     const observer = new ResizeObserver(place);
     observer.observe(element);
     place();
-    return () => { observer.disconnect(); animations.forEach(animation => animation.cancel()); clearTimeout(settle); clearTimeout(hide); };
+    follow();
+    return () => {
+      observer.disconnect(); cancelAnimationFrame(frame); animations.forEach(animation => animation.cancel());
+      clearTimeout(settle); clearTimeout(hide);
+    };
   }, [presentation?.startedAt, presentation?.duration, presentation?.seed]);
   if (!visible || !game.dice?.length) return null;
   return <div className="dice-flight" ref={board} data-settled={settled || undefined} role="img" aria-label={`Rolled ${game.dice.join(' and ')}`}>
+    {game.dice.map((_, index) => <span className="die-shadow" key={`shadow-${index}`} />)}
     {game.dice.map((face, index) => {
       const color = game.dieColors?.[index] ?? (index ? 'green' : 'pink');
-      return <span className="flying-die" key={index}>
+      return <span className="flying-die" key={index} data-face={face} data-solid={solid || undefined}>
+        <canvas className="die-canvas" aria-hidden="true" />
         <Die face={face} color={color} />
         <span className="die-flat" data-die-color={color}><Pips face={face} /></span>
       </span>;
