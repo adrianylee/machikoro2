@@ -89,9 +89,9 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
           <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
           <p className="muted">{tablePhase(game)}</p>
         </div>
-        {isActive && <p className="turn-wallet" title="Your coins">
-          <Coin value={viewerCoins} metal="gold" /><span aria-hidden="true">{viewerCoins === 1 ? 'coin' : 'coins'}</span>
-        </p>}
+        <p className="turn-wallet" title="Your coins">
+          <Coin value={viewerCoins} metal="gold" /><span>your {viewerCoins === 1 ? 'coin' : 'coins'}</span>
+        </p>
       </div>
       {game.dice && game.phase !== 'roll' && game.resolutionStage !== 'roll' && <span className="roll-total">Rolled {game.dice.join(' + ')}{game.dice.length === 2 && ` = ${game.dice[0] + game.dice[1]}`}</span>}
       <div className="turn-actions">
