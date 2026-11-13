@@ -63,7 +63,8 @@ test('special effect choices, congratulations and results use the game command p
   await page.getByRole('button', { name: 'Show detailed statistics' }).click();
   const statistics = page.getByRole('dialog', { name: 'Detailed statistics' });
   await expect(statistics.getByRole('row', { name: /Aki \(you\)/ })).toHaveAttribute('data-self', 'true');
-  await expect(statistics.getByRole('columnheader')).toHaveCount(9);
+  await expect(statistics.getByRole('columnheader')).toHaveCount(8);
+  await expect(statistics.getByRole('button', { name: 'Coins', exact: true })).toHaveCount(0);
   await expect(statistics.getByRole('button', { name: 'Total buildings' })).toBeVisible();
   const thinking = statistics.getByRole('button', { name: 'Thinking time' });
   const first = statistics.getByRole('row').nth(1);

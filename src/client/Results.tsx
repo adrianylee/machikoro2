@@ -39,17 +39,39 @@ const honors: Honor[] = [
   { icon: 'chat', title: 'Most talkative', column: 'Chat messages', score: stats => stats?.chats ?? 0, format: n => `${n} chat messages` },
 ];
 
+const confettiColors = ['#ffcb62', '#f282ad', '#70d6a0', '#68b3ff', '#b58cff'];
+
+// Each piece gets its own stable drift, sway, tumble axis, size, and speed so the shower reads as paper, not rain.
+function confettiPiece(seed: number, full: boolean, burst?: number): CSSProperties {
+  let state = (seed * 2654435761 + 97) >>> 0;
+  const random = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+  const between = (low: number, high: number) => low + random() * (high - low);
+  const shape = random();
+  const delay = full ? between(0, burst === undefined ? .9 : .45) : between(0, .35);
+  const fall = !full ? between(1.1, 1.9) : burst === undefined ? between(2.8, 4.6) : Math.min(between(2.5, 3.6), 3.95 - delay);
+  return {
+    '--x': `${between(0, 100)}%`,
+    '--color': confettiColors[Math.floor(random() * confettiColors.length)],
+    '--width': `${shape < .2 ? between(3, 4) : between(6, 10)}px`,
+    '--height': `${shape < .2 ? between(12, 17) : shape > .85 ? between(6, 8) : between(8, 13)}px`,
+    '--round': shape > .85 ? '50%' : '1px',
+    '--drift': full ? `${between(-14, 14)}vw` : `${between(-14, 14)}px`,
+    '--sway': `${full ? between(10, 34) : between(3, 8)}px`,
+    '--sway-time': `${between(.7, 1.5)}s`,
+    '--tumble-time': `${between(.5, 1.4)}s`,
+    '--tilt': `${between(0, 360)}deg`,
+    '--axis-x': between(-1, 1).toFixed(2), '--axis-y': between(-1, 1).toFixed(2), '--axis-z': between(-.4, .4).toFixed(2),
+    '--delay': `${delay}s`,
+    '--fall': `${fall}s`,
+  } as CSSProperties;
+}
+
 function Confetti({ full = false, burst }: { full?: boolean; burst?: number }) {
   const confetti = <div className={full ? 'confetti confetti-full' : 'confetti'} aria-hidden="true" data-burst={burst}>
-    {Array.from({ length: full ? 48 : 12 }, (_, i) => {
-      const delay = (i % 13) * .025;
-      return <i key={i} style={{
-        left: `${(i * 61 + (burst ?? 0) * 17) % 100}%`,
-        background: ['#ffcb62', '#f282ad', '#70d6a0', '#68b3ff'][(i + (burst ?? 0)) % 4],
-        animationDelay: `${delay}s`,
-        animationDuration: `${burst === undefined ? 1.3 + (i % 7) * .19 : 4 - delay}s`,
-      }} />;
-    })}
+    {Array.from({ length: full ? 64 : 14 }, (_, i) => <i key={i} style={confettiPiece(i + 1 + (burst ?? 0) * 131, full, burst)}><b /></i>)}
   </div>;
   return full ? createPortal(confetti, document.body) : confetti;
 }
@@ -109,7 +131,6 @@ export function Results({ game, self, online, rematch, congratulate, controls, c
   });
   const columns = [
     { key: 'landmarks', label: 'Landmarks', value: (city: TableCity) => city.landmarks.length, format: String },
-    { key: 'coins', label: 'Coins', value: (city: TableCity) => city.coins, format: String },
     ...honors.filter(honor => honor.icon !== 'chat').map(honor => ({
       key: honor.icon, label: honor.column, value: (city: TableCity) => honor.icon === 'buildings'
         ? city.landmarks.length + city.establishments.reduce((total, stack) => total + stack.count, 0)
