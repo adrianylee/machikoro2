@@ -19,21 +19,18 @@ const rows = [
   ['landmarks', 'Landmarks'],
 ] as const;
 
-export function tablePhase(game: GameView) {
+function tablePhase(game: GameView) {
   switch (game.phase) {
     case 'opening': return `Opening round ${game.openingRound} of 3`;
     case 'roll': return 'Roll dice';
     case 'resolve': return game.resolutionStage ? 'Resolve the roll' : 'Build';
     case 'build': return 'Build';
     case 'choice': return 'Resolve effect';
-    case 'finished': {
-      const winner = game.cities.find(city => city.id === game.winner);
-      return `Game complete · ${winner ? winner.name + ' wins!' : 'Game drawn'}`;
-    }
+    case 'finished': return '';
   }
 }
 
-export function TurnClock({ start, serverNow }: { start: number; serverNow?: number }) {
+function TurnClock({ start, serverNow }: { start: number; serverNow?: number }) {
   const [seconds, setSeconds] = useState(() => Math.max(0, Math.floor(((serverNow ?? Date.now()) - start) / 1000)));
   useEffect(() => {
     const age = Math.max(0, (serverNow ?? Date.now()) - start);
@@ -81,19 +78,23 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
   const viewerCoins = game.cities.find(entry => entry.id === self)?.coins ?? 0;
   const activeCity = game.cities.find(entry => entry.id === game.activePlayerId);
   const isActive = game.activePlayerId === self;
+  const turnStart = game.turnBeganAt ?? game.turnStartedAt;
   const canBuild = online && isActive && (game.phase === 'opening' || game.phase === 'build');
 
   return <div className="game-stage">
     {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} congratulate={congratulate} controls={controls} colors={colors} /> : <section className="panel turn-controls" aria-label="Turn controls">
       <div className="turn-heading">
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
-        {canBuild && <p className="muted">{game.phase === 'opening' ? 'Build an establishment or pass.' : 'Build one card or pass.'}</p>}
+        <p className="muted">{tablePhase(game)}</p>
       </div>
       {game.dice && game.phase !== 'roll' && game.resolutionStage !== 'roll' && <span className="roll-total">Rolled {game.dice.join(' + ')}{game.dice.length === 2 && ` = ${game.dice[0] + game.dice[1]}`}</span>}
-      {online && isActive && game.phase === 'roll' && <DiceTray selected={game.diceSelection} onSelect={dice => send({ type: 'dice-select', dice })}
-        onThrow={dice => send({ type: 'roll', dice })} />}
-      {canBuild && <button className="secondary" onClick={() => send({ type: 'build', cardId: null })}>Pass</button>}
-      {!isActive && nudge}
+      <div className="turn-actions">
+        {turnStart !== undefined && <TurnClock start={turnStart} serverNow={game.serverNow} />}
+        {online && isActive && game.phase === 'roll' && <DiceTray selected={game.diceSelection} onSelect={dice => send({ type: 'dice-select', dice })}
+          onThrow={dice => send({ type: 'roll', dice })} />}
+        {canBuild && <button className="secondary" onClick={() => send({ type: 'build', cardId: null })}>Pass</button>}
+        {!isActive && nudge}
+      </div>
     </section>}
     {isActive && game.choice && <EffectChoice key={game.version} game={game} self={self} disabled={!online}
       choose={decision => send({ type: 'choose', decision })} />}

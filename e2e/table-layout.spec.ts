@@ -37,7 +37,10 @@ test('table presents market, cities and readable card details on desktop and a p
     });
   });
   await page.goto(`/room/${roomId}`);
-  await expect(page.getByRole('heading', { name: 'Opening round 2 of 3' }).first()).toBeVisible();
+  await expect(page.getByText('Opening round 2 of 3', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.header-brand .room-code')).toBeVisible();
+  const turnControls = page.getByRole('region', { name: 'Turn controls' });
+  await expect(turnControls).toHaveCSS('background-color', 'rgb(212, 238, 255)');
   const market = page.getByRole('region', { name: 'Market', exact: true });
   await expect(market.getByRole('group', { name: 'Bakery, 3 copies' })).toBeVisible();
   const leaderboard = page.getByRole('region', { name: 'Leaderboard overview' });
@@ -77,6 +80,7 @@ test('table presents market, cities and readable card details on desktop and a p
   await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(245, 231, 208)');
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   await expect(bank).toHaveCSS('background-color', 'rgb(36, 37, 39)');
+  await expect(turnControls).toHaveCSS('background-color', 'rgb(201, 205, 211)');
   await expect(bank.locator('.bank-card')).toHaveCSS('background-color', 'rgb(23, 23, 25)');
   await expect(bank.locator('.bank-card')).toHaveCSS('border-top-color', 'rgb(255, 210, 48)');
   await page.screenshot({ path: info.outputPath('table-dark.png'), fullPage: true });

@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { useAudio, useButtonFeedback, useGameSound } from './sound.ts';
 import { createRoom, newCredential, recentRoom, roomPath, savedSeat, useRoom, validRoom } from './room.ts';
 import type { Lobby, RoomAction } from './room.ts';
-import { GameTable, tablePhase, TurnClock } from './GameTable.tsx';
+import { GameTable } from './GameTable.tsx';
 import { Coin } from './Cards.tsx';
 import { Notifications } from './Notifications.tsx';
 import { References } from './References.tsx';
@@ -200,9 +200,7 @@ function RoomView({ id, sound, audio, notices }: { id: string; sound: boolean; a
   const connected = lobby.players.filter(seat => seat.online).length;
   const canStart = status === 'online' && connected >= 2;
   const playerOrder = lobby.game?.turnOrder ?? lobby.players.map(seat => seat.id);
-  const count = lobby.game ? lobby.players.length : connected;
   const active = lobby.players.find(seat => seat.id === lobby.game?.activePlayerId);
-  const turnStart = lobby.game?.turnBeganAt ?? lobby.game?.turnStartedAt;
   function sendNudge() {
     if (!turn || !send({ type: 'nudge' })) return;
     const at = performance.now();
@@ -212,10 +210,6 @@ function RoomView({ id, sound, audio, notices }: { id: string; sound: boolean; a
   }
 
   return <main className="content-width room-view">
-    <div className="phase-banner">
-      <div><p className="eyebrow">{count} {count === 1 ? 'player' : 'players'}{!lobby.game && ' connected'}</p><h1>{lobby.game ? tablePhase(lobby.game) : 'Lobby'}</h1></div>
-      {turnStart && lobby.game?.phase !== 'finished' && <TurnClock start={turnStart} serverNow={lobby.game?.serverNow} />}
-    </div>
     {status !== 'online' && <p className="status-line" aria-live="polite">Reconnecting…</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="table-grid">
@@ -228,7 +222,7 @@ function RoomView({ id, sound, audio, notices }: { id: string; sound: boolean; a
         rematch={() => send({ type: 'rematch', version: lobby.game!.version })}
         congratulate={() => send({ type: 'congratulate', version: lobby.game!.version })} /> : <section className="panel room-stage">
         <img src="/art/radio-tower.webp" alt="" />
-        <div><h2>Gather your players</h2><p>{host ? 'Invite friends and start with 2–5 connected players.' : 'The host will start when the group is here.'}</p>
+        <div><h1>Lobby</h1><p className="eyebrow">{connected} {connected === 1 ? 'player' : 'players'} connected</p><p>{host ? 'Invite friends and start with 2–5 connected players.' : 'The host will start when the group is here.'}</p>
           {host && <button className="primary lobby-action" disabled={!canStart} onClick={() => send({ type: 'start' })}>Start game</button>}
         </div>
       </section>}
@@ -306,16 +300,19 @@ function App() {
   return <>
     <header className="masthead">
       <div className="content-width header-inner">
-        <a className="brand" href="/"><span><Icon name="city" /></span>Machi Koro 2</a>
+        <div className="header-brand">
+          <a className="brand" href="/"><span><Icon name="city" /></span>Machi Koro 2</a>
+          {room && <><span aria-hidden="true">·</span><span className="room-code" title={room.toUpperCase()}>{room.toUpperCase()}</span></>}
+        </div>
         <nav aria-label="Game settings">
-        {room && <div className="room-invite"><span className="room-code" title={room.toUpperCase()}>{room.toUpperCase()}</span><button className="secondary copy-room" onClick={async () => {
+        {room && <button className="secondary copy-room" onClick={async () => {
             try {
               await navigator.clipboard.writeText(new URL(`/room/${room}`, location.origin).href);
               showNotice('Invite link copied.');
             } catch {
               showNotice('Copy the invite link from your address bar.');
             }
-          }}>Copy invite link</button></div>}
+          }}>Copy invite link</button>}
           <button className="icon-button" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setDark(value => !value)}><Icon name={dark ? 'sun' : 'moon'} /></button>
           <button className="icon-button" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'}
