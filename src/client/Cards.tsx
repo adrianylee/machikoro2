@@ -136,9 +136,14 @@ function CardMeta({ card, count, cost }: { card: TableCard; count: number; cost?
   </span>;
 }
 
-export function CardTile({ card, count, cost, blocked, unaffordable, mini, inline, ownerName, buy, earnings, earningsPartial, activationAt, serverNow }: {
+/**
+ * A card on the table. With `inline` the full details are printed on the card, as in a city.
+ * With `select` an inline card also becomes one option of a radio group (give or take this card).
+ */
+export function CardTile({ card, count, cost, blocked, unaffordable, mini, inline, ownerName, buy, earnings, earningsPartial, activationAt, serverNow, select, selected }: {
   card: TableCard; count: number; cost?: number; blocked?: string;
   unaffordable?: boolean; mini?: boolean; inline?: boolean; ownerName?: string; buy?: () => boolean; earnings?: number; earningsPartial?: boolean; activationAt?: number; serverNow?: number;
+  select?: () => void; selected?: boolean;
 }) {
   const [preview, setPreview] = useState<{ left: number; top: number; width: number; closing?: boolean }>();
   const anchor = useRef<HTMLDivElement>(null);
@@ -214,7 +219,7 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
     };
   }, [preview]);
   return <>
-    <div ref={anchor} tabIndex={inline ? undefined : 0} role="group" className={mini || ownerName ? 'mini-card' : isBank ? 'table-card bank-card' : 'table-card'}
+    <div ref={anchor} tabIndex={inline && !select ? undefined : 0} role={select ? 'radio' : 'group'} aria-checked={select ? !!selected : undefined} onClick={select} className={mini || ownerName ? 'mini-card' : isBank ? 'table-card bank-card' : 'table-card'}
       data-color={card.color} data-stacked={count > 1 || undefined} data-card={card.id}
       data-unaffordable={unaffordable || undefined} aria-label={description}
       onPointerEnter={event => { if (!inline && event.pointerType !== 'touch') show(); }}
@@ -233,6 +238,10 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
         if (event.pointerType === 'touch') event.currentTarget.focus({ preventScroll: true });
       }}
       onKeyDown={event => {
+        if (select && (event.key === ' ' || event.key === 'Enter')) {
+          event.preventDefault();
+          select();
+        }
         if (event.key === 'Tab' && !event.shiftKey && popup.current?.querySelector('button')) {
           event.preventDefault();
           popup.current.querySelector('button')?.focus();
