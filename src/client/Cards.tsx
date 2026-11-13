@@ -1,3 +1,4 @@
+import { scrollCardRow } from './scroll.ts';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BuildingArt } from './BuildingArt.tsx';
 import { createPortal } from 'react-dom';
@@ -200,11 +201,16 @@ export function CardTile({ card, count, cost, blocked, unaffordable, mini, inlin
         setPreview(undefined);
       }
     };
+    const previewElement = popup.current;
+    const row = anchor.current?.closest<HTMLElement>('.card-row');
+    const wheel = (event: WheelEvent) => { if (row) scrollCardRow(event, row); };
+    previewElement?.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('scroll', scrolled, true);
     return () => {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', escape);
       window.removeEventListener('scroll', scrolled, true);
+      previewElement?.removeEventListener('wheel', wheel);
     };
   }, [preview]);
   return <>

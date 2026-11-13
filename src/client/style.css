@@ -386,7 +386,8 @@ img[data-sprite-pending] { visibility: hidden; }
 .city-buttons button { justify-content: center; padding-inline: 8px; overflow-wrap: anywhere; }
 .city-buttons button:first-child { grid-column: 1 / -1; }
 .city-buttons [aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
-.city .card-row { touch-action: pan-x; overscroll-behavior-inline: contain; }
+.card-row { overscroll-behavior-x: contain; }
+.chat-feed, .notification-stack { overscroll-behavior-y: contain; }
 .city-heading { position: relative; align-items: start; }
 .city-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 .roster-nudge { position: relative; min-width: 0; overflow-wrap: anywhere; }
@@ -502,7 +503,7 @@ img[data-sprite-pending] { visibility: hidden; }
 .card-preview[data-bank] { position: fixed; }
 .table-bank .bank-card .card-picture img { aspect-ratio: 1.5; }
 .table-bank .bank-card .card-effect { font-size: .78rem; overflow-wrap: anywhere; }
-.card-preview[data-bank] .card-effect { display: block; }
+.card-preview[data-bank] .card-effect { display: block; color: inherit; }
 .card-preview { overflow: hidden; }
 .card-preview-expanded img { height: min(155px, 26vh); object-fit: contain; }
 .card-preview .card-buy { font-size: .83rem; padding: 6px; }
@@ -568,7 +569,7 @@ img[data-sprite-pending] { visibility: hidden; }
 }
 .card-preview-expanded img { height: min(232px, 38dvh); max-height: none; }
 .card-preview-expanded > strong { font-size: 1.13rem; }
-.card-preview-expanded p, .card-preview-expanded .card-buy { font-size: .97rem; }
+.card-preview-expanded p, .card-preview-expanded .card-buy, .card-preview[data-bank] .card-effect { font-size: .97rem; }
 .card-preview-expanded .card-buy { min-height: 38px; }
 .card-inline-info { display: grid; gap: 5px; color: var(--card-text); font-size: .8rem; line-height: 1.32; }
 .card-inline-info p { margin: 0; }

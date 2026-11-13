@@ -13,12 +13,12 @@ test('table presents market, cities and readable card details on desktop and a p
       type: 'room', self: 'aki', hostId: 'aki',
       players: [{ id: 'aki', name: 'Aki', online: true, color: 0 }, { id: 'ren', name: 'Ren', online: true, color: 1 },
         { id: 'bo', name: 'Bo', online: true, color: 2 }],
-      chat: [],
+      chat: Array.from({ length: 16 }, (_, id) => ({ id, playerId: 'aki', text: 'Chat message ' + id })),
       game: {
         phase: 'opening', openingRound: 2, activePlayerId: 'aki',
         rollCoinChanges: strongerRival ? { aki: -2, ren: 3 } : undefined,
         supply: {
-          low: { remaining: 27, stacks: [{ id: 'bakery', count: 3 }, { id: 'wheat-field', count: 1 }] },
+          low: { remaining: 27, stacks: [{ id: 'bakery', count: 3 }, { id: 'wheat-field', count: 1 }, { id: 'forest', count: 1 }] },
           high: { remaining: 0, stacks: [] },
           landmarks: { remaining: 15, stacks: [{ id: 'radio-tower', count: 1 }, { id: 'observatory', count: 1 }] },
         },
@@ -67,6 +67,8 @@ test('table presents market, cities and readable card details on desktop and a p
   await bank.getByRole('group', { name: 'Bank', exact: true }).hover();
   const bankDetails = page.getByRole('region', { name: 'Bank details' });
   await expect(bankDetails).toContainText('Maintains the rules.');
+  await expect(bankDetails.locator('.card-effect')).toHaveCSS('font-size',
+    await bankDetails.locator('p').evaluate(node => getComputedStyle(node).fontSize));
   await expect(bankDetails).toHaveCSS('pointer-events', 'none');
   await page.getByRole('heading', { name: 'Market', exact: true }).hover();
   await expect(bankDetails).toBeHidden();
@@ -148,10 +150,30 @@ test('table presents market, cities and readable card details on desktop and a p
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('region', { name: 'Turn controls' })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  const marketRow = market.locator('.card-row').first();
+  await marketRow.hover();
+  const marketStart = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(120, -300);
+  await expect.poll(() => marketRow.evaluate(row => row.scrollLeft)).toBeGreaterThan(0);
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => marketRow.evaluate(row => row.scrollWidth - row.clientWidth - row.scrollLeft)).toBeLessThan(1);
+  expect(await page.evaluate(() => window.scrollY)).toBe(marketStart);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(marketStart);
+
   const cityCards = page.getByRole('region', { name: 'Player city' }).locator('.card-row');
   await cityCards.scrollIntoViewIfNeeded();
   await cityCards.hover();
   await page.mouse.wheel(0, 180);
   await expect.poll(() => cityCards.evaluate(row => row.scrollLeft)).toBeGreaterThan(0);
   await page.screenshot({ path: info.outputPath('table-phone.png') });
+  const chat = page.getByRole('log', { name: 'Chat messages' });
+  await chat.hover();
+  const chatStart = await chat.evaluate(feed => feed.scrollTop);
+  const pageStart = await page.evaluate(() => window.scrollY);
+  expect(chatStart).toBeGreaterThan(0);
+  await page.mouse.wheel(0, -1000);
+  await expect.poll(() => chat.evaluate(feed => feed.scrollTop)).toBe(0);
+  await page.mouse.wheel(0, -200);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pageStart);
 });
