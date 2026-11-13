@@ -123,7 +123,7 @@ export function Results({ game, self, online, rematch, congratulate, controls, c
   let rank = 0;
   return <section ref={panel} className="panel results" aria-label="Game result">
     {winner?.id === self && <Confetti full />}
-    <h2>Final leaderboard</h2>
+    <h2>Final leaderboard · {winner ? `${winner.name} wins!` : 'Game drawn'}</h2>
     <ol>{cities.map((city, index) => {
       if (!index || compare(cities[index - 1], city)) rank = index + 1;
       return <li key={city.id} data-winner={city.id === winner?.id || undefined}

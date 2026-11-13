@@ -61,8 +61,8 @@ test('room state and credentials survive a Worker process restart', async ({ pag
     await guest.getByRole('button', { name: 'Join game', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Start game' })).toBeEnabled();
     await page.getByRole('button', { name: 'Start game' }).click();
-    await expect(guest.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
+    await expect(guest.getByText('Opening round 1 of 3', { exact: true })).toBeVisible();
+    await expect(page.getByText('Opening round 1 of 3', { exact: true })).toBeVisible();
     const active = await page.getByRole('button', { name: 'Pass', exact: true }).isVisible() ? page : guest;
     await active.getByRole('button', { name: 'Pass', exact: true }).click();
     await page.getByRole('button', { name: 'Game Log', exact: true }).click();
@@ -73,7 +73,7 @@ test('room state and credentials survive a Worker process restart', async ({ pag
     await Promise.all([page.reload(), guest.reload()]);
     await expect(page.getByText('Aki (you)', { exact: true })).toBeVisible();
     await expect(guest.getByText('Ren (you)', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
+    await expect(page.getByText('Opening round 1 of 3', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Game Log', exact: true }).click();
     await expect(page.getByText('passes.', { exact: false })).toBeVisible();
   } finally {

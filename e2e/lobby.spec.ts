@@ -42,8 +42,8 @@ test('create a private room, join from a second browser, chat and recover the gu
     await guest.screenshot({ path: info.outputPath('mobile-lobby.png'), fullPage: true });
     await expect(page.getByRole('button', { name: 'Start game' })).toBeEnabled();
     await page.getByRole('button', { name: 'Start game' }).click();
-    await expect(guest.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Opening round 1 of 3' })).toBeVisible();
+    await expect(guest.getByText('Opening round 1 of 3', { exact: true })).toBeVisible();
+    await expect(page.getByText('Opening round 1 of 3', { exact: true })).toBeVisible();
     const active = await page.getByRole('button', { name: 'Pass', exact: true }).isVisible() ? page : guest;
     await active.getByRole('button', { name: 'Pass', exact: true }).click();
     await page.getByRole('button', { name: 'Game Log', exact: true }).click();

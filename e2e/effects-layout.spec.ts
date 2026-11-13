@@ -54,14 +54,13 @@ test('special effect choices, congratulations and results use the game command p
   await expect(effect.getByRole('button', { name: 'Skip exchange' })).toHaveCount(0);
   await effect.getByLabel('Give').selectOption('business-center');
   await effect.getByRole('button', { name: 'Give card' }).click();
-  await expect(page.getByRole('heading', { name: 'Game complete · Aki wins!' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Final leaderboard · Aki wins!' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: 'Play again' })).toBeInViewport();
   await page.screenshot({ path: info.outputPath('victory-phone.png') });
   await page.getByLabel('Most annoying: 729 nudges', { exact: true }).hover();
   await expect(page.getByRole('tooltip')).toHaveText('Most annoying: 729 nudges');
   await page.getByRole('button', { name: 'Show detailed statistics' }).click();
-  await expect(page.getByRole('heading', { name: 'Final leaderboard' })).toBeVisible();
   const statistics = page.getByRole('dialog', { name: 'Detailed statistics' });
   await expect(statistics.getByRole('row', { name: /Aki \(you\)/ })).toHaveAttribute('data-self', 'true');
   await expect(statistics.getByRole('columnheader')).toHaveCount(9);
