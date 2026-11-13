@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { scrollCardRow } from './scroll.ts';
 import type { MatchAction } from '../game/match.ts';
 import { TABLE_CARDS } from '../game/view.ts';
 import type { GameView } from '../game/view.ts';
@@ -58,19 +59,19 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
   const [selection, setSelection] = useState<{ cityId: string; filter?: CityFilter }>();
   const filter = selection?.cityId === cityId ? selection.filter : undefined;
   const cityRow = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const row = cityRow.current;
-    if (!row) return;
-    function sideways(event: WheelEvent) {
-      if (!row || event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-      const max = row.scrollWidth - row.clientWidth;
-      if (max <= 0 || (event.deltaY < 0 ? row.scrollLeft <= 0 : row.scrollLeft >= max - 1)) return;
-      event.preventDefault();
-      row.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? row.clientWidth : 1);
+    const element = stage.current;
+    if (!element) return;
+    function scroll(event: WheelEvent) {
+      const row = event.target instanceof Element && event.target.closest<HTMLElement>('.card-row');
+      if (row) scrollCardRow(event, row);
     }
-    row.scrollLeft = 0;
-    row.addEventListener('wheel', sideways, { passive: false });
-    return () => row.removeEventListener('wheel', sideways);
+    element.addEventListener('wheel', scroll, { passive: false });
+    return () => element.removeEventListener('wheel', scroll);
+  }, []);
+  useEffect(() => {
+    if (cityRow.current) cityRow.current.scrollLeft = 0;
   }, [cityId]);
   const city = game.cities.find(entry => entry.id === cityId);
   const visibleCity = city && [...city.establishments, ...city.landmarks].filter(stack => matchesCityFilter(TABLE_CARDS[stack.id], filter))
@@ -81,7 +82,7 @@ export function GameTable({ game, self, cityId, online, send, rematch, congratul
   const turnStart = game.turnBeganAt ?? game.turnStartedAt;
   const canBuild = online && isActive && (game.phase === 'opening' || game.phase === 'build');
 
-  return <div className="game-stage">
+  return <div className="game-stage" ref={stage}>
     {game.phase === 'finished' ? <Results game={game} self={self} online={online} rematch={rematch} congratulate={congratulate} controls={controls} colors={colors} /> : <section className="panel turn-controls" aria-label="Turn controls">
       <div className="turn-heading">
         <h2>{isActive ? 'Your turn' : `${activeCity?.name ?? 'Another player'}’s turn`}</h2>
